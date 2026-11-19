@@ -131,7 +131,9 @@ import {
   isServerNetworkAccessible,
   isTailscaleHttpsEndpoint,
   endpointDefaultPreferenceKey,
+  phoneAccessEndpoint,
 } from "./ConnectionsSettings.logic";
+import { PhoneAccessRow, usePhoneAccessStatus } from "./PhoneAccessSettings";
 import {
   AdvertisedEndpointListRow,
   AuthorizedClientsHeaderAction,
@@ -811,19 +813,30 @@ function ConnectionsSettingsContent({
       void handleRevokeOtherDesktopClients();
     }
   };
+  const phoneAccessStatus = usePhoneAccessStatus(accessEnvironmentId, canReadAccess);
+  const phoneAccessEnabled = accessEnvironment?.serverConfig?.settings.phoneAccessEnabled === true;
+  // Phones reach the relay from anywhere, so its links come first and pair by default.
+  const phoneRelayEndpoint = phoneAccessEndpoint(phoneAccessStatus, gt("Phone (Cloudflare)"));
   const tailscaleHttpsEndpoint = desktopAdvertisedEndpoints.find(isTailscaleHttpsEndpoint) ?? null;
   const visibleDesktopNetworkAdvertisedEndpoints = isLocalBackendNetworkAccessible
     ? desktopAdvertisedEndpoints.filter((endpoint) => !isTailscaleHttpsEndpoint(endpoint))
     : [];
-  const visibleDesktopAdvertisedEndpoints = tailscaleHttpsEndpoint
-    ? [...visibleDesktopNetworkAdvertisedEndpoints, tailscaleHttpsEndpoint]
-    : visibleDesktopNetworkAdvertisedEndpoints;
+  const visibleDesktopAdvertisedEndpoints = [
+    ...(phoneRelayEndpoint ? [phoneRelayEndpoint] : []),
+    ...visibleDesktopNetworkAdvertisedEndpoints,
+    ...(tailscaleHttpsEndpoint ? [tailscaleHttpsEndpoint] : []),
+  ];
   const defaultDesktopNetworkAdvertisedEndpoint = selectPairingEndpoint(
     visibleDesktopNetworkAdvertisedEndpoints,
     defaultAdvertisedEndpointKey,
   );
   const defaultDesktopAdvertisedEndpoint =
-    defaultDesktopNetworkAdvertisedEndpoint ??
+    selectPairingEndpoint(
+      phoneRelayEndpoint
+        ? [phoneRelayEndpoint, ...visibleDesktopNetworkAdvertisedEndpoints]
+        : visibleDesktopNetworkAdvertisedEndpoints,
+      defaultAdvertisedEndpointKey,
+    ) ??
     selectPairingEndpoint(
       tailscaleHttpsEndpoint ? [tailscaleHttpsEndpoint] : [],
       defaultAdvertisedEndpointKey,
@@ -1361,6 +1374,16 @@ function ConnectionsSettingsContent({
               </>
             ) : canManageLocalBackend ? (
               renderDisabledNetworkAccessRow()
+            ) : null}
+            {canReadAccess && phoneAccessStatus !== null ? (
+              <PhoneAccessRow
+                title={searchableSetting("phone-access").title}
+                enabled={phoneAccessEnabled}
+                status={phoneAccessStatus}
+                canWrite={canWriteAccess}
+                managed={remoteClientsDenial}
+                onEnabledChange={(enabled) => updateAccessSettings({ phoneAccessEnabled: enabled })}
+              />
             ) : null}
             {canReadRelay || canManageRelay ? (
               <CloudLinkRow

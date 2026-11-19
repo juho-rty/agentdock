@@ -8,6 +8,7 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 import * as PeerLinks from "./peer/PeerLinks.ts";
+import * as PhoneAccess from "./phone/PhoneAccess.ts";
 
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -1596,6 +1597,7 @@ export const layerWsRpc = (
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const relayClient = yield* RelayClient.RelayClient;
+      const phoneAccess = yield* PhoneAccess.PhoneAccess;
       // Webhook URLs start agents; expose them only to operate-scoped sessions while keeping tasks readable.
       const withVisibleWebhookUrls = (result: ScheduledTaskListResult): ScheduledTaskListResult =>
         currentSession.scopes.includes(AuthOrchestrationOperateScope)
@@ -2755,6 +2757,7 @@ export const layerWsRpc = (
             ),
           ),
         [WS_METHODS.cloudGetRelayClientStatus]: (_input) => relayClient.resolve,
+        [WS_METHODS.phoneAccessGetStatus]: (_input) => phoneAccess.getStatus,
         [WS_METHODS.cloudInstallRelayClient]: (_input) =>
           Stream.callback<RelayClientInstallProgressEvent, RelayClientInstallFailedError>((queue) =>
             relayClient
