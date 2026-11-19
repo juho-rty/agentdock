@@ -65,6 +65,7 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
     userId?: string;
     userInfoAt?: number;
     missingToken?: boolean;
+    readUsageCommand?: Effect.Effect<string | undefined>;
     authMethod?: "oauth-personal" | "oauth-business" | "gemini-api-key";
   } = {},
 ) {
@@ -132,6 +133,7 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
   const usage = yield* makeAntigravityUsageProbe({
     profileDirectory,
     authMethod: options.authMethod ?? "oauth-personal",
+    ...(options.readUsageCommand ? { readUsageCommand: options.readUsageCommand } : {}),
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
   return { ...usage, requests, writeToken, tokenPath };
 });
@@ -661,6 +663,102 @@ describe("Antigravity subscription limits", () => {
         expect((yield* probe).unavailable?.reason).toBe("unsupported");
         expect(requests).toEqual([]);
       }
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+  it.effect("reads the agy CLI's /usage output when there is no ACP token file", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.makeUnsafe("2026-11-19T07:14:02Z")));
+      const bucket = (
+        id: string,
+        window: string,
+        remaining_fraction: number,
+        reset_time: string,
+      ) => ({
+        id,
+        name: "Limit Remaining",
+        description: "Usage so far.",
+        window,
+        remaining_fraction,
+        reset_time,
+      });
+      const output = {
+        status: "SUCCESS",
+        command: {
+          name: "usage",
+          data: {
+            groups: [
+              {
+                name: "Gemini Models",
+                buckets: [
+                  bucket("gemini-weekly", "weekly", 0.94, "2026-11-25T00:14:21Z"),
+                  bucket("gemini-5h", "5h", 0.98, "2026-11-19T09:45:30Z"),
+                ],
+              },
+              {
+                name: "Claude and GPT models",
+                buckets: [
+                  bucket("3p-weekly", "weekly", 1, "2026-11-26T07:14:02Z"),
+                  bucket("3p-5h", "5h", 1, "2026-11-19T12:14:02Z"),
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const { probe, requests } = yield* fixture({
+        missingToken: true,
+        readUsageCommand: Effect.succeed(JSON.stringify(output)),
+      });
+      const limits = yield* probe;
+      expect(requests).toEqual([]);
+      expect(limits.unavailable).toBeUndefined();
+      expect(
+        limits.windows
+          .map(({ id, kind, label, usedPercent, resetsAt }) => ({
+            id,
+            kind,
+            label,
+            usedPercent: Math.round(usedPercent),
+            resetsAt,
+          }))
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      ).toEqual([
+        // Untouched windows report a rolling reset, which is not a real reset time.
+        {
+          id: "3p-5h",
+          kind: "session",
+          label: "Claude & GPT (shared) · 5-hour",
+          usedPercent: 0,
+          resetsAt: undefined,
+        },
+        {
+          id: "3p-weekly",
+          kind: "weekly",
+          label: "Claude & GPT (shared) · Weekly",
+          usedPercent: 0,
+          resetsAt: undefined,
+        },
+        {
+          id: "gemini-5h",
+          kind: "session",
+          label: "Gemini · 5-hour",
+          usedPercent: 2,
+          resetsAt: "2026-11-19T09:45:30.000Z",
+        },
+        {
+          id: "gemini-weekly",
+          kind: "weekly",
+          label: "Gemini · Weekly",
+          usedPercent: 6,
+          resetsAt: "2026-11-25T00:14:21.000Z",
+        },
+      ]);
+
+      const failed = yield* fixture({
+        missingToken: true,
+        readUsageCommand: Effect.undefined,
+      });
+      expect((yield* failed.probe).unavailable?.reason).toBe("unsupported");
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

@@ -77,7 +77,36 @@ const Models = Schema.Struct({
   ),
 });
 
+/** `agy -p /usage --output-format json`, which reads the CLI's keychain login. */
+const UsageCommandOutput = Schema.Struct({
+  command: Schema.Struct({
+    data: Schema.Struct({
+      groups: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            name: Schema.optional(Schema.String),
+            buckets: Schema.optional(
+              Schema.Array(
+                Schema.Struct({
+                  id: Schema.NonEmptyString,
+                  name: Schema.optional(Schema.String),
+                  description: Schema.optional(Schema.String),
+                  window: Schema.optional(Schema.String),
+                  remaining_fraction: Schema.optional(Schema.Number),
+                  reset_time: Schema.optional(Schema.String),
+                  disabled: Schema.optional(Schema.Boolean),
+                }),
+              ),
+            ),
+          }),
+        ),
+      ),
+    }),
+  }),
+});
+
 const decodeTokenFile = Schema.decodeEffect(Schema.fromJsonString(TokenFile));
+const decodeUsageCommandOutput = Schema.decodeEffect(Schema.fromJsonString(UsageCommandOutput));
 const decodeTokenResponse = Schema.decodeUnknownEffect(TokenResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfo);
 const decodeSummary = Schema.decodeUnknownEffect(Summary);
@@ -139,6 +168,35 @@ export const antigravityAccountFingerprint = (userInfo: unknown) =>
 /** Windows from a `retrieveUserQuotaSummary` answer requested at `requestedAt`. */
 export const antigravitySummaryWindows = (response: unknown, requestedAt: number) =>
   decodeSummary(response).pipe(Effect.map((summary) => summaryWindows(summary, requestedAt)));
+
+/** Windows from the stdout of `agy -p /usage --output-format json` run at `requestedAt`. */
+const antigravityUsageCommandWindows = (stdout: string, requestedAt: number) =>
+  decodeUsageCommandOutput(stdout).pipe(
+    Effect.map((output) =>
+      summaryWindows(
+        {
+          groups: (output.command.data.groups ?? []).map((group) => ({
+            ...(group.name === undefined ? {} : { displayName: group.name }),
+            buckets: (group.buckets ?? []).map((bucket) => ({
+              bucketId: bucket.id,
+              ...(bucket.window === undefined ? {} : { window: bucket.window }),
+              ...(bucket.name === undefined ? {} : { displayName: bucket.name }),
+              // The CLI always describes a bucket; an untouched one still has a rolling reset.
+              ...(bucket.description === undefined || bucket.remaining_fraction === 1
+                ? {}
+                : { description: bucket.description }),
+              ...(bucket.remaining_fraction === undefined
+                ? {}
+                : { remainingFraction: bucket.remaining_fraction }),
+              ...(bucket.reset_time === undefined ? {} : { resetTime: bucket.reset_time }),
+              ...(bucket.disabled === undefined ? {} : { disabled: bucket.disabled }),
+            })),
+          })),
+        },
+        requestedAt,
+      ),
+    ),
+  );
 
 function summaryWindows(summary: typeof Summary.Type, requestedAt: number) {
   const windows = new Map<string, ServerProviderUsageWindow>();
@@ -210,6 +268,12 @@ function modelWindows(models: typeof Models.Type) {
 export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(function* (input: {
   readonly profileDirectory: string;
   readonly authMethod: AntigravitySettings["authMethod"];
+  /**
+   * Runs `agy -p /usage --output-format json` and returns its stdout. The `agy` CLI keeps its
+   * Google login in the OS keychain instead of `acp_token.json`, so this is its only quota source.
+   * Undefined when the command could not run.
+   */
+  readonly readUsageCommand?: Effect.Effect<string | undefined>;
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -238,6 +302,17 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     }
     if (!(yield* fs.exists(tokenPath))) {
       cached = undefined;
+      if (input.readUsageCommand) {
+        const requestedAt = yield* Clock.currentTimeMillis;
+        const stdout = yield* input.readUsageCommand;
+        const windows =
+          stdout === undefined
+            ? []
+            : yield* antigravityUsageCommandWindows(stdout, requestedAt).pipe(
+                Effect.orElseSucceed((): ServerProviderUsageWindow[] => []),
+              );
+        if (windows.length > 0) return makeUsageLimits({ checkedAt, windows });
+      }
       return makeUnavailableUsageLimits({
         checkedAt,
         reason: "unsupported",

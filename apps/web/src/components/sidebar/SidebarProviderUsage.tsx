@@ -37,15 +37,82 @@ function writeCollapsed(collapsed: boolean) {
   }
 }
 
-/** The window closest to running out decides what the row shows. */
-function tightestWindow(
+const KIND_ORDER = ["session", "weekly", "monthly"] as const;
+
+/**
+ * The tightest window of each kind (session, weekly, monthly), so the row shows both the
+ * short-term and the long-term limit. Providers that report only other kinds show their tightest.
+ */
+function rowWindows(
   windows: ReadonlyArray<ServerProviderUsageWindow>,
-): ServerProviderUsageWindow | null {
-  let tightest: ServerProviderUsageWindow | null = null;
-  for (const window of windows) {
-    if (tightest === null || window.usedPercent > tightest.usedPercent) tightest = window;
-  }
-  return tightest;
+): ServerProviderUsageWindow[] {
+  const tightest = (candidates: ReadonlyArray<ServerProviderUsageWindow>) => {
+    let found: ServerProviderUsageWindow | null = null;
+    for (const window of candidates) {
+      if (found === null || window.usedPercent > found.usedPercent) found = window;
+    }
+    return found;
+  };
+  const byKind = KIND_ORDER.flatMap((kind) => {
+    const found = tightest(windows.filter((window) => window.kind === kind));
+    return found ? [found] : [];
+  });
+  if (byKind.length > 0) return byKind;
+  const other = tightest(windows);
+  return other ? [other] : [];
+}
+
+function remainingTone(remaining: number) {
+  return remaining <= 10
+    ? "font-medium text-destructive"
+    : remaining <= 25
+      ? "font-medium text-warning"
+      : "text-muted-foreground";
+}
+
+function WindowLine({
+  window,
+  now,
+  color,
+}: {
+  readonly window: ServerProviderUsageWindow;
+  readonly now: number;
+  readonly color: string;
+}) {
+  const gt = useGT();
+  const m = useMessages();
+  const remaining = remainingPercent(window);
+  const pace = paceOf(window, now);
+  const resetsIn = formatResetsIn(window, now, m, "in");
+  const minutes = window.windowDurationMins;
+  const label =
+    minutes !== undefined && minutes > 0 && minutes < 24 * 60 && minutes % 60 === 0
+      ? `${minutes / 60}h`
+      : minutes !== undefined && minutes >= 24 * 60 && minutes % (24 * 60) === 0
+        ? `${minutes / (24 * 60)}d`
+        : window.kind === "session"
+          ? gt("Session", { $context: "usage limit window" })
+          : window.kind === "weekly"
+            ? gt("Weekly", { $context: "usage limit window" })
+            : window.kind === "monthly"
+              ? gt("Monthly", { $context: "usage limit window" })
+              : window.label;
+  return (
+    <span className="flex w-full min-w-0 items-center gap-2 text-2xs tabular-nums">
+      <span className="w-8 shrink-0 truncate text-muted-foreground">{label}</span>
+      <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+        <span
+          className="absolute inset-y-0 start-0 rounded-full"
+          style={{ width: `${remaining}%`, backgroundColor: color }}
+        />
+      </span>
+      <span className={cn("w-8 shrink-0 text-end", remainingTone(remaining))}>{remaining}%</span>
+      <span className="flex w-14 shrink-0 items-center justify-end gap-1 text-muted-foreground">
+        {pace ? <PaceIcon pace={pace} /> : null}
+        {resetsIn ? <span className="truncate">{resetsIn}</span> : null}
+      </span>
+    </span>
+  );
 }
 
 function ProviderUsageRow({
@@ -58,18 +125,14 @@ function ProviderUsageRow({
   readonly onOpen: () => void;
 }) {
   const gt = useGT();
-  const m = useMessages();
   const name = resolveProviderInstanceDisplayName(provider);
   const statusKey = getProviderStatusKey(provider);
   const windows = provider.usageLimits?.windows ?? [];
-  const window = tightestWindow(windows);
-  const remaining = window ? remainingPercent(window) : null;
-  const pace = window ? paceOf(window, now) : null;
-  const resetsIn = window ? formatResetsIn(window, now, m, "in") : null;
+  const lines = rowWindows(windows);
   const color = normalizeProviderAccentColor(provider.accentColor) ?? barColor(provider.driver);
 
   let note: string | null = null;
-  if (!window) {
+  if (lines.length === 0) {
     if (provider.auth.status === "unauthenticated") note = gt("Sign in needed");
     else if (statusKey === "error") note = gt("Unavailable", { $context: "provider status" });
     else note = gt("No limits", { $context: "provider has no usage limits" });
@@ -87,33 +150,11 @@ function ProviderUsageRow({
           className={cn("size-1.5 shrink-0 rounded-full", PROVIDER_STATUS_STYLES[statusKey].dot)}
         />
         <span className="truncate text-sidebar-foreground">{name}</span>
-        <span
-          className={cn(
-            "ms-auto shrink-0 tabular-nums",
-            remaining !== null && remaining <= 10
-              ? "font-medium text-destructive"
-              : remaining !== null && remaining <= 25
-                ? "font-medium text-warning"
-                : "text-muted-foreground",
-          )}
-        >
-          {remaining !== null ? gt("{remaining}% left", { remaining }) : note}
-        </span>
+        {note ? <span className="ms-auto shrink-0 text-muted-foreground">{note}</span> : null}
       </span>
-      {window ? (
-        <span className="flex w-full items-center gap-2">
-          <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-            <span
-              className="absolute inset-y-0 start-0 rounded-full"
-              style={{ width: `${remaining ?? 0}%`, backgroundColor: color }}
-            />
-          </span>
-          <span className="flex shrink-0 items-center gap-1 text-2xs text-muted-foreground tabular-nums">
-            {pace ? <PaceIcon pace={pace} /> : null}
-            {resetsIn ? <span>{resetsIn}</span> : null}
-          </span>
-        </span>
-      ) : null}
+      {lines.map((window) => (
+        <WindowLine key={window.id} window={window} now={now} color={color} />
+      ))}
     </button>
   );
 

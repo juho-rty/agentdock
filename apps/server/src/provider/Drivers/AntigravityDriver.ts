@@ -21,6 +21,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { HttpClient } from "effect/http";
 import * as AcpErrors from "effect-acp/errors";
@@ -63,6 +64,7 @@ import {
   type AntigravityAdapterV2RuntimeInput,
 } from "../../orchestration-v2/Adapters/AntigravityAdapterV2.ts";
 import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
+import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeAntigravityProvider } from "../AntigravityProvider.ts";
 import { makeAntigravityUsageProbe } from "../antigravityUsageLimits.ts";
@@ -435,9 +437,37 @@ export const AntigravityDriver: ProviderDriver<
       };
     });
 
+    // The `agy` CLI is a native binary that answers `/usage` in a few seconds without a model turn.
+    const readUsageCommand = Effect.gen(function* () {
+      const executable = yield* installation.resolve(settings.binaryPath, processEnvironment);
+      if (executable.harnessPath !== null) return undefined;
+      const child = yield* spawner.spawn(
+        ChildProcess.make(
+          executable.executablePath,
+          ["-p", "/usage", "--output-format", "json", "--print-timeout", "20s"],
+          {
+            cwd: profileDirectory,
+            env: { ...processEnvironment, GEMINI_HOME: profileDirectory },
+            extendEnv: false,
+            shell: false,
+            stdin: "ignore",
+          },
+        ),
+      );
+      const [stdout, exitCode] = yield* Effect.all(
+        [collectUint8StreamText({ stream: child.stdout, maxBytes: 65_536 }), child.exitCode],
+        { concurrency: "unbounded" },
+      );
+      return Number(exitCode) === 0 && !stdout.truncated ? stdout.text : undefined;
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("25 seconds"),
+      Effect.orElseSucceed(() => undefined),
+    );
     const usage = yield* makeAntigravityUsageProbe({
       profileDirectory,
       authMethod: auth.authMethod,
+      readUsageCommand,
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
