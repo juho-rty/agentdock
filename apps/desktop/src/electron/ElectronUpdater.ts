@@ -4,7 +4,12 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
+import * as HostProcess from "@t3tools/shared/HostProcess";
+
+import { app } from "electron";
 import { AppImageUpdater, autoUpdater } from "electron-updater";
+
+import { startMacAdHocInstall } from "./MacAdHocInstall.ts";
 
 type AutoUpdater = typeof autoUpdater;
 type SpawnLog = (cmd: string, args?: Array<string>, ...rest: Array<unknown>) => Promise<boolean>;
@@ -26,6 +31,19 @@ const relaunchWithoutInheritedDescriptors = (updater: AppImageUpdater) => {
       ...rest,
     );
   };
+};
+
+// The zip electron-updater downloaded and checked (sha512) for the pending update; macOS ad-hoc
+// builds install it themselves because Squirrel.Mac rejects their signature.
+let downloadedUpdateFile: string | null = null;
+let trackingDownloadedFile = false;
+
+const trackDownloadedUpdateFile = () => {
+  if (trackingDownloadedFile) return;
+  trackingDownloadedFile = true;
+  autoUpdater.on("update-downloaded", (event) => {
+    downloadedUpdateFile = event.downloadedFile ?? null;
+  });
 };
 
 export type ElectronUpdaterFeedUrl = Parameters<AutoUpdater["setFeedURL"]>[0];
@@ -105,6 +123,7 @@ export const make = ElectronUpdater.of({
   setFeedURL: Effect.fn("ElectronUpdater.setFeedURL")(function (options) {
     return Effect.suspend(() => {
       autoUpdater.setFeedURL(options);
+      trackDownloadedUpdateFile();
       return Effect.void;
     });
   }),
@@ -171,11 +190,20 @@ export const make = ElectronUpdater.of({
     isSilent,
     isForceRunAfter,
   }) {
-    return Effect.suspend(() => {
+    return Effect.flatMap(HostProcess.Platform, (platform) => {
       const channel = autoUpdater.channel;
       if (autoUpdater instanceof AppImageUpdater) relaunchWithoutInheritedDescriptors(autoUpdater);
       return Effect.try({
-        try: () => autoUpdater.quitAndInstall(isSilent, isForceRunAfter),
+        try: () => {
+          const swapping = startMacAdHocInstall({
+            platform,
+            execPath: process.execPath,
+            pid: process.pid,
+            downloadedFile: downloadedUpdateFile,
+          });
+          if (swapping) app.quit();
+          else autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
+        },
         catch: (cause) =>
           new ElectronUpdaterQuitAndInstallError({
             channel,
