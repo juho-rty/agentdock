@@ -4,17 +4,17 @@ AgentDock is a fork of [T3 Code](https://github.com/pingdotgg/t3code) (MIT).
 It installs next to the official T3 Code and the old Swift AgentDock without
 touching either:
 
-|                  | T3 Code              | old AgentDock            | AgentDock (this repo)         |
-| ---------------- | -------------------- | ------------------------ | ----------------------------- |
-| App ID           | `com.t3tools.t3code` | `local.agentdock.app`    | `com.agentdock.desktop`       |
-| Data folder      | `~/.t3`              | `~/.agentdock`           | `~/.agentdock-next`           |
-| Electron profile | `t3code-v2`          | –                        | `agentdock-next`              |
-| Command line     | `t3`                 | –                        | `agentdock`                   |
-| Source           | –                    | `Dropbox/Apps/AgentDock` | `Dropbox/Apps/AgentDock-next` |
+|                  | T3 Code              | old AgentDock                   | AgentDock (this repo)    |
+| ---------------- | -------------------- | ------------------------------- | ------------------------ |
+| App ID           | `com.t3tools.t3code` | `local.agentdock.app`           | `com.agentdock.desktop`  |
+| Data folder      | `~/.t3`              | `~/.agentdock`                  | `~/.agentdock-next`      |
+| Electron profile | `t3code-v2`          | –                               | `agentdock-next`         |
+| Command line     | `t3`                 | –                               | `agentdock`              |
+| Source           | –                    | `Dropbox/Apps/AgentDock-legacy` | `Dropbox/Apps/AgentDock` |
 
 ## Working on it
 
-The repository lives in `Dropbox/Apps/AgentDock-next` so every machine sees the
+The repository lives in `Dropbox/Apps/AgentDock` so every machine sees the
 same source. Dependencies and build output (`node_modules`, `dist`, `release`,
 `native/resource-monitor/target`, …) are marked Dropbox-ignored, so each machine
 installs its own. On a new machine, or after cloning fresh:
@@ -71,17 +71,17 @@ Open **Settings -> Sharing & access** in the desktop app, enable **Network acces
 and create a pairing link. Open that link in the phone's browser (same Wi-Fi or
 Tailscale). Add it to the home screen for an app-like window.
 
-## Retiring the old AgentDock
+## The old AgentDock
 
-The old Swift app still runs from `Dropbox/Apps/AgentDock` on several machines and
-rebuilds itself when that folder changes, so this repo stays in `AgentDock-next`
-for now. Once the old app is quit everywhere:
+The old Swift app was retired on 2026-11-19. It was quit on every machine, its
+Windows login entry was removed, and its Cloudflare relay (`agentdock-relay`)
+had its workers.dev address disabled. Its source is kept in
+`Dropbox/Apps/AgentDock-legacy` and its data in `~/.agentdock`; nothing here reads either.
 
-1. Rename `Dropbox/Apps/AgentDock` to `AgentDock-legacy` and `AgentDock-next` to `AgentDock`.
-2. Optionally switch the data folder from `~/.agentdock-next` to `~/.agentdock`
-   (`.agentdock-next` in `apps/desktop/src/app/DesktopStatePaths.ts`,
-   `apps/server/src/os-jank.ts`, `apps/server/src/cli/browser.ts`, and the profile names in
-   `apps/desktop/src/app/DesktopUserData.ts`) after moving the old `~/.agentdock` aside.
+The new app still keeps its data in `~/.agentdock-next`. To move it to `~/.agentdock`
+later, first move the old `~/.agentdock` aside, then change `.agentdock-next` in
+`apps/desktop/src/app/DesktopStatePaths.ts`, `apps/server/src/os-jank.ts`,
+`apps/server/src/cli/browser.ts`, and the profile names in `apps/desktop/src/app/DesktopUserData.ts`.
 
 ## Where things live
 
