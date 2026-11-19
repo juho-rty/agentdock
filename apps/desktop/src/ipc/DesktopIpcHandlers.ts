@@ -82,6 +82,7 @@ import {
 } from "./methods/legacyLocalStorage.ts";
 import { getWslState, setWslBackendEnabled, setWslDistro, setWslOnly } from "./methods/wsl.ts";
 import { getFileManagerFolder } from "./methods/fileManagerFolder.ts";
+import * as QuickAskIpc from "./methods/quickAsk.ts";
 import {
   getCliCommandState,
   installCliCommand,
@@ -150,6 +151,14 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(setWslDistro);
   yield* ipc.handle(setWslOnly);
   yield* ipc.handle(getFileManagerFolder);
+  yield* ipc.handle(QuickAskIpc.setQuickAskHeight);
+  yield* ipc.handle(QuickAskIpc.closeQuickAsk);
+  yield* ipc.handle(QuickAskIpc.openMainFromQuickAsk);
+  yield* ipc.handle(QuickAskIpc.openSettingsFromQuickAsk);
+  yield* ipc.handle(QuickAskIpc.quitFromQuickAsk);
+  yield* ipc.handle(QuickAskIpc.takePendingNavigation);
+  yield* ipc.handle(QuickAskIpc.getTrayEnabled);
+  yield* ipc.handle(QuickAskIpc.setTrayEnabled);
 
   yield* ipc.handle(pickFolder);
   yield* ipc.handle(toLocalBackendPath);

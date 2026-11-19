@@ -65,3 +65,46 @@ it.effect("answers only the main window's top frame", () =>
     });
   }),
 );
+
+it.effect("answers a trusted renderer's top frame until it is destroyed", () =>
+  Effect.gen(function* () {
+    const popoverFrame = {};
+    let destroyed = false;
+    const invoke = new Map<string, DesktopIpc.DesktopIpcHandleListener>();
+    const ipc = yield* DesktopIpc.DesktopIpc.pipe(
+      Effect.provide(
+        DesktopIpc.layer({
+          removeHandler: (channel) => void invoke.delete(channel),
+          handle: (channel, listener) => void invoke.set(channel, listener),
+          removeAllListeners: () => undefined,
+          on: () => undefined,
+        }).pipe(
+          Layer.provide(Layer.mock(ElectronWindow.ElectronWindow, { main: Effect.succeedNone })),
+        ),
+      ),
+    );
+    yield* ipc.handle(
+      DesktopIpc.makeIpcMethod({
+        channel: "token",
+        payload: Schema.Void,
+        result: Schema.String,
+        handler: () => Effect.succeed("secret"),
+      }),
+    );
+    const call = (sender: unknown) =>
+      Effect.promise(() =>
+        Promise.resolve(invoke.get("token")!(sender as never, undefined)).catch(() => "rejected"),
+      );
+    const popover = { sender: { id: 7 }, senderFrame: popoverFrame };
+    const before = yield* call(popover);
+    yield* ipc.trustRenderer({ id: 7, mainFrame: popoverFrame, isDestroyed: () => destroyed });
+    const trusted = yield* call(popover);
+    const subframe = yield* call({ sender: { id: 7 }, senderFrame: {} });
+    destroyed = true;
+    const afterDestroy = yield* call(popover);
+    assert.deepEqual(
+      [before, trusted, subframe, afterDestroy],
+      ["rejected", "secret", "rejected", "rejected"],
+    );
+  }),
+);

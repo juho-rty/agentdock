@@ -1142,6 +1142,17 @@ export interface DesktopBridge {
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
   /** Folder of the front Finder (macOS) or File Explorer (Windows) window; null when none or unsupported. */
   getFileManagerFolder: () => Promise<string | null>;
+  /** Routes the main window to an app path chosen in Quick Ask. */
+  onNavigate?: (listener: (path: string) => void) => () => void;
+  takePendingNavigation?: () => Promise<string | null>;
+  quickAskSetHeight?: (height: number) => Promise<void>;
+  quickAskClose?: () => Promise<void>;
+  /** Hides Quick Ask and focuses the main window, optionally at an app path such as a thread route. */
+  quickAskOpenMain?: (path: string | null) => Promise<void>;
+  quickAskOpenSettings?: () => Promise<void>;
+  quickAskQuit?: () => Promise<void>;
+  getTrayEnabled?: () => Promise<boolean>;
+  setTrayEnabled?: (enabled: boolean) => Promise<void>;
   /** Maps a Windows path to the one a local backend (`primary` or `wsl:…`) sees; null when it cannot. */
   toLocalBackendPath: (backendId: string, windowsPath: string) => Promise<string | null>;
   pickProjectFavicon: (initialPath?: string) => Promise<string | null>;

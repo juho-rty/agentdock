@@ -116,6 +116,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { useSearchableSetting } from "./settingsSearch";
+import { TraySetting } from "./TraySetting";
 import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
 import { SUPPORTED_LOCALES } from "../../i18n/locales";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
@@ -1205,6 +1206,7 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+        <TraySetting />
       </SettingsSection>
     </SettingsPageContainer>
   );

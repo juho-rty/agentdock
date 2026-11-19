@@ -903,6 +903,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["ask before delete stop process shell console history"],
   },
   {
+    id: "tray-quick-ask",
+    title: msg("Show in menu bar / system tray"),
+    to: "/settings/general",
+    searchTerms: [msg("quick ask tray menubar status icon popover background")],
+    desktopOnly: true,
+  },
+  {
     id: "quit-confirmation",
     title: msg("Quit shortcut"),
     to: "/settings/general",
