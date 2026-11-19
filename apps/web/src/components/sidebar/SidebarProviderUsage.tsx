@@ -43,7 +43,7 @@ const KIND_ORDER = ["session", "weekly", "monthly"] as const;
  * The tightest window of each kind (session, weekly, monthly), so the row shows both the
  * short-term and the long-term limit. Providers that report only other kinds show their tightest.
  */
-function rowWindows(
+export function rowWindows(
   windows: ReadonlyArray<ServerProviderUsageWindow>,
 ): ServerProviderUsageWindow[] {
   const tightest = (candidates: ReadonlyArray<ServerProviderUsageWindow>) => {
@@ -70,6 +70,25 @@ function remainingTone(remaining: number) {
       : "text-muted-foreground";
 }
 
+/** "5h", "7d", or the window's kind when its length is not a whole number of hours or days. */
+export function usageWindowShortLabel(
+  window: ServerProviderUsageWindow,
+  gt: ReturnType<typeof useGT>,
+): string {
+  const minutes = window.windowDurationMins;
+  return minutes !== undefined && minutes > 0 && minutes < 24 * 60 && minutes % 60 === 0
+    ? `${minutes / 60}h`
+    : minutes !== undefined && minutes >= 24 * 60 && minutes % (24 * 60) === 0
+      ? `${minutes / (24 * 60)}d`
+      : window.kind === "session"
+        ? gt("Session", { $context: "usage limit window" })
+        : window.kind === "weekly"
+          ? gt("Weekly", { $context: "usage limit window" })
+          : window.kind === "monthly"
+            ? gt("Monthly", { $context: "usage limit window" })
+            : window.label;
+}
+
 function WindowLine({
   window,
   now,
@@ -86,19 +105,7 @@ function WindowLine({
   const timeLeft = paceRemainingPercent(window, now);
   const [barRef, paceMark] = usePaceMark(timeLeft);
   const resetsIn = formatResetsIn(window, now, m, "in");
-  const minutes = window.windowDurationMins;
-  const label =
-    minutes !== undefined && minutes > 0 && minutes < 24 * 60 && minutes % 60 === 0
-      ? `${minutes / 60}h`
-      : minutes !== undefined && minutes >= 24 * 60 && minutes % (24 * 60) === 0
-        ? `${minutes / (24 * 60)}d`
-        : window.kind === "session"
-          ? gt("Session", { $context: "usage limit window" })
-          : window.kind === "weekly"
-            ? gt("Weekly", { $context: "usage limit window" })
-            : window.kind === "monthly"
-              ? gt("Monthly", { $context: "usage limit window" })
-              : window.label;
+  const label = usageWindowShortLabel(window, gt);
   return (
     <span className="flex w-full min-w-0 items-center gap-2 text-2xs tabular-nums">
       <span className="w-8 shrink-0 truncate text-muted-foreground">{label}</span>

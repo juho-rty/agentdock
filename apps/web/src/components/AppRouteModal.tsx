@@ -4,10 +4,12 @@ import { XIcon } from "lucide-react";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { getCommandPaletteOpener } from "../commandPaletteStore";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useNativeTitlebarHeight } from "../lib/windowControlsOverlay";
 import { requestWorkspaceFocus } from "../lib/workspaceFocus";
 import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { GlobalVoiceInputIndicator } from "./chat/GlobalVoiceInputIndicator";
+import { MobileTabBar } from "./mobileHome/MobileTabBar";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -35,6 +37,9 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
   // buttons). Below sm the modal fills the window and leaves that strip empty; up to lg its
   // 1.5rem inset is shorter than the strip.
   const nativeTitlebarHeight = useNativeTitlebarHeight();
+  // Below sm the modal fills the window, so the phone tab bar docks inside it: the page
+  // behind a modal dialog is inert.
+  const fillsWindow = useMediaQuery("max-sm");
 
   return (
     <DialogPrimitive.Root
@@ -108,6 +113,7 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
               className="absolute inset-x-0 top-0 hidden h-(--app-modal-titlebar-height) [-webkit-app-region:drag] max-sm:block"
             />
             {children}
+            {fillsWindow ? <MobileTabBar variant="docked" /> : null}
             <GlobalVoiceInputIndicator />
           </DialogPrimitive.Popup>
         </DialogPrimitive.Viewport>

@@ -8,18 +8,19 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
+import { resolveProviderInstanceDisplayName } from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   AuthOrchestrationOperateScope,
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,
   type ModelSelection,
   type ProjectId,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { T, useGT, Var } from "gt-react";
 import {
   ArrowUpIcon,
-  BarChart3Icon,
   ChevronDownIcon,
   FolderIcon,
   HammerIcon,
@@ -30,7 +31,7 @@ import {
 } from "lucide-react";
 import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { APP_DISPLAY_NAME } from "../../branding";
+import { APP_BASE_NAME } from "../../branding";
 import { m } from "../../i18n/messages";
 import {
   cn,
@@ -42,6 +43,7 @@ import {
 import { observeResize } from "../../lib/observeResize";
 import { getAppModelOptionsForInstance } from "../../modelSelection";
 import {
+  getDefaultProviderInstanceModel,
   isProviderInstancePickerReady,
   isProviderInstancePickerVisible,
   providerInstanceEntriesFor,
@@ -52,7 +54,11 @@ import {
 import { startChatThread } from "../../hooks/useChatProject";
 import { useMergedSettings } from "../../hooks/useSettings";
 import { useProjects, useVisibleThreadShells } from "../../state/entities";
-import { usePrimaryEnvironment } from "../../state/environments";
+import {
+  useEnvironmentProviders,
+  useEnvironments,
+  usePrimaryEnvironment,
+} from "../../state/environments";
 import { projectEnvironment } from "../../state/projects";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { readEnvironmentScope } from "../../state/session";
@@ -63,15 +69,16 @@ import { DEFAULT_INTERACTION_MODE } from "../../types";
 import { AgentDockMark } from "../AgentDockMark";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getDisplayModelName } from "../chat/providerIconUtils";
+import { RelativeTime } from "../RelativeTime";
 import {
   Menu,
-  MenuGroup,
   MenuGroupLabel,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
   MenuTrigger,
 } from "../ui/menu";
+import { QuickAskUsage } from "./QuickAskUsage";
 import {
   abbreviateHomePath,
   buildQuickAskProjectChips,
@@ -177,6 +184,33 @@ export function QuickAskView() {
       ? undefined
       : entries.find((entry) => entry.instanceId === modelSelection.instanceId);
   const { attention, recent, workingCount } = selectQuickAskThreads(threads);
+  const { environments } = useEnvironments();
+  const providersByEnvironment = useEnvironmentProviders();
+  const rowContext = (row: QuickAskThreadRow): QuickAskRowContext => {
+    const thread = row.thread;
+    const project = projects.find(
+      (candidate) =>
+        candidate.environmentId === thread.environmentId && candidate.id === thread.projectId,
+    );
+    return {
+      projectTitle:
+        project === undefined
+          ? null
+          : isChatProject(project, serverConfigs.get(thread.environmentId)?.chatWorkspaceRoot)
+            ? gt("Chat")
+            : project.title,
+      // The computer only matters when there is more than one.
+      environmentLabel:
+        environments.length > 1
+          ? (environments.find((candidate) => candidate.environmentId === thread.environmentId)
+              ?.label ?? null)
+          : null,
+      provider:
+        providersByEnvironment
+          .get(thread.environmentId)
+          ?.find((candidate) => candidate.instanceId === thread.providerInstanceId) ?? null,
+    };
+  };
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   const fileManagerName = getLocalFileManagerName(platform, m);
   const canSend =
@@ -379,7 +413,7 @@ export function QuickAskView() {
     >
       <header className="flex items-center gap-2 px-3.5 pt-3 pb-2">
         <AgentDockMark className="size-4.5 text-foreground" aria-hidden />
-        <span className="text-sm font-semibold">{APP_DISPLAY_NAME}</span>
+        <span className="text-sm font-semibold">{APP_BASE_NAME}</span>
         <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           <span
             className={cn(
@@ -403,7 +437,11 @@ export function QuickAskView() {
             <T>Needs you</T>
           </h2>
           {attention.map((row) => (
-            <QuickAskThreadButton key={`${row.thread.environmentId}:${row.thread.id}`} row={row} />
+            <QuickAskThreadButton
+              key={`${row.thread.environmentId}:${row.thread.id}`}
+              row={row}
+              context={rowContext(row)}
+            />
           ))}
         </section>
       ) : null}
@@ -414,7 +452,11 @@ export function QuickAskView() {
             <T>Recent</T>
           </h2>
           {recent.map((row) => (
-            <QuickAskThreadButton key={`${row.thread.environmentId}:${row.thread.id}`} row={row} />
+            <QuickAskThreadButton
+              key={`${row.thread.environmentId}:${row.thread.id}`}
+              row={row}
+              context={rowContext(row)}
+            />
           ))}
         </section>
       ) : null}
@@ -439,8 +481,16 @@ export function QuickAskView() {
               onSelect={() => setMode("chat")}
             />
           </div>
-          <QuickAskModelPicker
+          <QuickAskProviderPicker
             entries={entries}
+            selection={modelSelection}
+            onSelect={(instanceId) => {
+              const model = getDefaultProviderInstanceModel(providers, instanceId);
+              if (model) setModelOverride({ instanceId, model });
+            }}
+          />
+          <QuickAskModelPicker
+            entry={selectedEntry}
             selection={modelSelection}
             settings={unifiedSettings}
             onSelect={(selection) => setModelOverride(selection)}
@@ -474,7 +524,7 @@ export function QuickAskView() {
         ) : (
           <p className="text-xs text-muted-foreground">
             <T>
-              Add a project in <Var>{APP_DISPLAY_NAME}</Var> to ask here.
+              Add a project in <Var>{APP_BASE_NAME}</Var> to ask here.
             </T>
           </p>
         )}
@@ -515,16 +565,13 @@ export function QuickAskView() {
         ) : null}
       </section>
 
+      <QuickAskUsage onOpen={() => openInMainWindow("/usage")} />
+
       <footer className="flex items-center gap-0.5 border-t border-border px-1.5 py-1.5">
         <QuickAskFooterButton
           icon={<SquareArrowOutUpRightIcon className="size-3.5" aria-hidden />}
-          label={gt("Open {appName}", { appName: APP_DISPLAY_NAME })}
+          label={gt("Open {appName}", { appName: APP_BASE_NAME })}
           onClick={() => openInMainWindow(null)}
-        />
-        <QuickAskFooterButton
-          icon={<BarChart3Icon className="size-3.5" aria-hidden />}
-          label={gt("Usage")}
-          onClick={() => openInMainWindow("/usage")}
         />
         <QuickAskFooterButton
           icon={<SettingsIcon className="size-3.5" aria-hidden />}
@@ -542,19 +589,47 @@ export function QuickAskView() {
   );
 }
 
-function QuickAskThreadButton({ row }: { readonly row: QuickAskThreadRow }) {
+interface QuickAskRowContext {
+  readonly projectTitle: string | null;
+  readonly environmentLabel: string | null;
+  readonly provider: ServerProvider | null;
+}
+
+function QuickAskThreadButton({
+  row,
+  context,
+}: {
+  readonly row: QuickAskThreadRow;
+  readonly context: QuickAskRowContext;
+}) {
   const gt = useGT();
-  const label = quickAskStatusLabel(row.status, gt);
+  const details = [
+    quickAskStatusLabel(row.status, gt),
+    context.projectTitle,
+    context.environmentLabel,
+  ].filter((part): part is string => part !== null && part.length > 0);
+  const activityAt = row.activityAt > 0 ? new Date(row.activityAt).toISOString() : null;
   return (
     <button
       type="button"
       onClick={() => openInMainWindow(threadPath(row.thread.environmentId, row.thread.id))}
-      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-accent"
+      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent"
     >
-      <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[row.status])} aria-hidden />
+      <span className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[row.status])} aria-hidden />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm">{row.thread.title}</span>
-        <span className="truncate text-2xs text-muted-foreground">{label}</span>
+        <span className="truncate text-xs">{row.thread.title}</span>
+        <span className="truncate text-2xs text-muted-foreground">{details.join(" · ")}</span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-0.5 text-2xs text-muted-foreground tabular-nums">
+        {activityAt !== null ? <RelativeTime timestamp={activityAt} /> : null}
+        {context.provider !== null ? (
+          <ProviderInstanceIcon
+            driverKind={context.provider.driver}
+            displayName={resolveProviderInstanceDisplayName(context.provider)}
+            accentColor={context.provider.accentColor}
+            iconClassName="size-3 opacity-70"
+          />
+        ) : null}
       </span>
     </button>
   );
@@ -603,83 +678,118 @@ function QuickAskFooterButton(props: {
   );
 }
 
-function QuickAskModelPicker(props: {
+const PICKER_TRIGGER_CLASS =
+  "flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs hover:bg-accent";
+// The popover is narrower than the menu's desktop breakpoint, which would make rows touch-sized.
+
+/** Which AI company's agent answers. Picking one switches to that agent's default model. */
+function QuickAskProviderPicker(props: {
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
   readonly selection: ModelSelection | null;
-  readonly settings: Parameters<typeof getAppModelOptionsForInstance>[0];
-  readonly onSelect: (selection: ModelSelection) => void;
+  readonly onSelect: (instanceId: ProviderInstanceEntry["instanceId"]) => void;
 }) {
   const gt = useGT();
   const selectedEntry = props.entries.find(
     (entry) => entry.instanceId === props.selection?.instanceId,
   );
-  const selectedModel = selectedEntry
-    ? getAppModelOptionsForInstance(props.settings, selectedEntry, props.selection?.model).find(
-        (option) => option.slug === props.selection?.model,
-      )
-    : undefined;
   const readyEntries = props.entries.filter(isProviderInstancePickerReady);
-  const value = props.selection
-    ? `${props.selection.instanceId}\u0000${props.selection.model}`
-    : "";
   return (
     <Menu>
       <MenuTrigger
         render={
           <button
             type="button"
-            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-accent"
+            aria-label={gt("Agent")}
+            className={cn(PICKER_TRIGGER_CLASS, "shrink-0 font-medium")}
           />
         }
       >
-        {selectedEntry ? (
-          <ProviderInstanceIcon
-            driverKind={selectedEntry.driverKind}
-            displayName={selectedEntry.displayName}
-            accentColor={selectedEntry.accentColor}
-            acpRegistryAgentId={selectedEntry.acpRegistryAgentId}
-            acpRegistryIconUrl={selectedEntry.acpRegistryIconUrl}
-            size="compact"
-          />
-        ) : null}
-        <span className="truncate">
-          {selectedEntry
-            ? `${selectedEntry.displayName}${
-                selectedModel
-                  ? ` · ${getDisplayModelName(selectedModel, { preferShortName: true })}`
-                  : ""
-              }`
-            : gt("No agent available")}
+        {selectedEntry ? <QuickAskEntryIcon entry={selectedEntry} /> : null}
+        <span className="max-w-24 truncate">
+          {selectedEntry ? selectedEntry.displayName : gt("No agent available")}
         </span>
         <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       </MenuTrigger>
       <MenuPopup align="start">
         <MenuRadioGroup
-          value={value}
+          value={props.selection?.instanceId ?? ""}
           onValueChange={(next: string) => {
-            const [instanceId, model] = next.split("\u0000");
-            const entry = readyEntries.find((candidate) => candidate.instanceId === instanceId);
-            if (entry && model) props.onSelect({ instanceId: entry.instanceId, model });
+            const entry = readyEntries.find((candidate) => candidate.instanceId === next);
+            if (entry) props.onSelect(entry.instanceId);
           }}
         >
           {readyEntries.map((entry) => (
-            <MenuGroup key={entry.instanceId}>
-              <MenuGroupLabel>{entry.displayName}</MenuGroupLabel>
-              {getAppModelOptionsForInstance(props.settings, entry, props.selection?.model).map(
-                (option) => (
-                  <MenuRadioItem
-                    key={option.slug}
-                    value={`${entry.instanceId}\u0000${option.slug}`}
-                  >
-                    {getDisplayModelName(option)}
-                  </MenuRadioItem>
-                ),
-              )}
-            </MenuGroup>
+            <MenuRadioItem key={entry.instanceId} value={entry.instanceId} size="compact">
+              <span className="flex items-center gap-1.5">
+                <QuickAskEntryIcon entry={entry} />
+                {entry.displayName}
+              </span>
+            </MenuRadioItem>
           ))}
           {readyEntries.length === 0 ? (
             <MenuGroupLabel>{gt("No agent is ready.")}</MenuGroupLabel>
           ) : null}
+        </MenuRadioGroup>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+function QuickAskEntryIcon({ entry }: { readonly entry: ProviderInstanceEntry }) {
+  return (
+    <ProviderInstanceIcon
+      driverKind={entry.driverKind}
+      displayName={entry.displayName}
+      accentColor={entry.accentColor}
+      acpRegistryAgentId={entry.acpRegistryAgentId}
+      acpRegistryIconUrl={entry.acpRegistryIconUrl}
+      size="compact"
+    />
+  );
+}
+
+/** The chosen agent's models. */
+function QuickAskModelPicker(props: {
+  readonly entry: ProviderInstanceEntry | undefined;
+  readonly selection: ModelSelection | null;
+  readonly settings: Parameters<typeof getAppModelOptionsForInstance>[0];
+  readonly onSelect: (selection: ModelSelection) => void;
+}) {
+  const gt = useGT();
+  const entry = props.entry;
+  if (entry === undefined || !isProviderInstancePickerReady(entry)) return null;
+  const options = getAppModelOptionsForInstance(props.settings, entry, props.selection?.model);
+  const selectedModel = options.find((option) => option.slug === props.selection?.model);
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={gt("Model")}
+            className={cn(PICKER_TRIGGER_CLASS, "text-muted-foreground")}
+          />
+        }
+      >
+        <span className="truncate">
+          {selectedModel
+            ? getDisplayModelName(selectedModel, { preferShortName: true })
+            : gt("Model")}
+        </span>
+        <ChevronDownIcon className="size-3 shrink-0" aria-hidden />
+      </MenuTrigger>
+      <MenuPopup align="start">
+        <MenuRadioGroup
+          value={props.selection?.model ?? ""}
+          onValueChange={(next: string) => {
+            if (next) props.onSelect({ instanceId: entry.instanceId, model: next });
+          }}
+        >
+          {options.map((option) => (
+            <MenuRadioItem key={option.slug} value={option.slug} size="compact">
+              {getDisplayModelName(option)}
+            </MenuRadioItem>
+          ))}
         </MenuRadioGroup>
       </MenuPopup>
     </Menu>

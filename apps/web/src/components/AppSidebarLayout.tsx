@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
+import { ChevronLeftIcon } from "lucide-react";
 
 import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -40,6 +41,8 @@ import {
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
+import { resolveMobileTab } from "./mobileHome/MobileHome.logic";
+import { MobileTabBar } from "./mobileHome/MobileTabBar";
 import ThreadSidebar from "./Sidebar";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
@@ -62,6 +65,7 @@ import {
   useSidebar,
   useSidebarVisibility,
 } from "./ui/sidebar";
+import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { registerCommands, registerMenuAction } from "../shortcuts/dispatcher";
@@ -317,8 +321,9 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
   const gt = useGT();
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const mobileTab = useLocation({ select: (location) => resolveMobileTab(location.pathname) });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar } = useSidebar();
+  const { isMobile, toggleSidebar } = useSidebar();
   const mobileSidebarSheetMounted = useMobileSidebarSheetMounted();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
@@ -389,7 +394,21 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
       )}
       data-sidebar-control=""
     >
-      {showSidebar ? (
+      {!showSidebar ? null : isMobile ? (
+        // Phones pick threads from the home list, so the tab pages need no control here
+        // and every other page leads back to that list.
+        mobileTab === null ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="pointer-events-auto size-[var(--workspace-titlebar-control-size)]! [-webkit-app-region:no-drag]"
+            aria-label={gt("Back to threads")}
+            onClick={() => void router.navigate({ to: "/" })}
+          >
+            <ChevronLeftIcon className="size-5" />
+          </Button>
+        ) : null
+      ) : (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -409,9 +428,17 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
               : gt("Toggle main sidebar")}
           </TooltipPopup>
         </Tooltip>
-      ) : null}
+      )}
     </div>
   );
+}
+
+/** The floating tab bar of the phone pages that render in the shell itself. */
+function MobileShellTabBar() {
+  const { isMobile } = useSidebar();
+  // Settings and Usage are modal dialogs that dock their own bar.
+  const inShell = useLocation({ select: (location) => !isAppModalPage(location.pathname) });
+  return isMobile && inShell ? <MobileTabBar variant="floating" /> : null;
 }
 
 export function AppSidebarLayout({
@@ -465,7 +492,8 @@ export function AppSidebarLayout({
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
-        className="h-dvh! min-h-0!"
+        // A page under the phone tab bar ends above it; the home list scrolls under it instead.
+        className="h-dvh! min-h-0! has-[[data-mobile-tab-bar=reserve]]:[&_[data-slot=sidebar-inset]]:h-[calc(100dvh-4.5rem-env(safe-area-inset-bottom))]!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
         style={sidebarProviderStyle}
@@ -499,6 +527,7 @@ export function AppSidebarLayout({
         {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl showSidebar={showSidebar} />
+        {showSidebar ? <MobileShellTabBar /> : null}
         {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
