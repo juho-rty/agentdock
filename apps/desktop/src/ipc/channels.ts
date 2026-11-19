@@ -146,3 +146,13 @@ export const RESTART_AUDIO_SERVICE_CHANNEL = "desktop:restart-audio-service";
 export const START_FILE_DRAG_CHANNEL = "desktop:start-file-drag";
 
 export const GET_FILE_MANAGER_FOLDER_CHANNEL = "desktop:get-file-manager-folder";
+
+export const NAVIGATE_CHANNEL = "desktop:navigate";
+export const QUICK_ASK_SET_HEIGHT_CHANNEL = "desktop:quick-ask-set-height";
+export const QUICK_ASK_CLOSE_CHANNEL = "desktop:quick-ask-close";
+export const QUICK_ASK_OPEN_MAIN_CHANNEL = "desktop:quick-ask-open-main";
+export const QUICK_ASK_QUIT_CHANNEL = "desktop:quick-ask-quit";
+export const QUICK_ASK_OPEN_SETTINGS_CHANNEL = "desktop:quick-ask-open-settings";
+export const TAKE_PENDING_NAVIGATION_CHANNEL = "desktop:take-pending-navigation";
+export const GET_TRAY_ENABLED_CHANNEL = "desktop:get-tray-enabled";
+export const SET_TRAY_ENABLED_CHANNEL = "desktop:set-tray-enabled";

@@ -54,6 +54,7 @@ import {
 } from "./lib/windowControlsOverlay";
 import { startProviderAuthDelivery } from "./providerAuthDelivery";
 import { getRouter, type AppRouter } from "./router";
+import { isQuickAskWindow, startDesktopNavigation } from "./quickAskWindow";
 import { appAtomRegistry } from "./rpc/atomRegistry";
 import { environmentProjects } from "./state/projects";
 import { primaryServerConfigAtom } from "./state/server";
@@ -270,6 +271,16 @@ export function startAppServices(): AppRouter {
 
   startClientAppearance();
   startI18n();
+  // The tray popover shares the main window's state; notifications, previews and
+  // navigation services stay with the main window so nothing runs twice.
+  if (isQuickAskWindow()) {
+    startHostEnvironmentLookup();
+    startEnvironmentThemeRepaint();
+    startThemeBackground();
+    startBrowserChromeThemeSync(router);
+    return router;
+  }
+  if (isElectron) startDesktopNavigation(router);
   startDocumentTitle(router);
   startHostEnvironmentLookup();
   startEnvironmentThemeRepaint();

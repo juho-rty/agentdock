@@ -51,6 +51,7 @@ import { useUiStateStore } from "../uiStateStore";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { GUEST_PAGE_PATH } from "../guestPage";
+import { QUICK_ASK_PATH } from "../quickAskWindow";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
 import { useHostedPromptLinkLanding } from "../components/promptLinks/HostedPromptLinkLanding";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
@@ -99,7 +100,8 @@ export const Route = createRootRoute({
       authGateState.status === "authenticated" &&
       getDesktopSnapShotBridge() &&
       shouldResumeSnapShotSetupOnStartup() &&
-      location.pathname !== "/settings/snap-shot"
+      location.pathname !== "/settings/snap-shot" &&
+      location.pathname !== QUICK_ASK_PATH
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
     }
@@ -167,7 +169,9 @@ function RootRouteBranch() {
     pathname === "/pair" ||
     pathname === "/connect" ||
     pathname === "/connect-agent" ||
-    pathname === "/approve-agent"
+    pathname === "/approve-agent" ||
+    // The tray popover is its own window without the app shell or its coordinators.
+    pathname === QUICK_ASK_PATH
   ) {
     return <Outlet />;
   }

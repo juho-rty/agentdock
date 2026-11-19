@@ -35,6 +35,8 @@ export interface DesktopSettings {
   readonly serverExposureMode: DesktopServerExposureMode;
   readonly tailscaleServeEnabled: boolean;
   readonly tailscaleServePort: number;
+  /** The menu bar (macOS) or notification area (Windows, Linux) icon that opens Quick Ask. */
+  readonly trayEnabled: boolean;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updateChannelConfiguredByUser: boolean;
   readonly wslBackendEnabled: boolean;
@@ -76,6 +78,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   serverExposureMode: "local-only",
   tailscaleServeEnabled: false,
   tailscaleServePort: DEFAULT_TAILSCALE_SERVE_PORT,
+  trayEnabled: true,
   updateChannel: "latest",
   updateChannelConfiguredByUser: false,
   wslBackendEnabled: false,
@@ -103,6 +106,7 @@ const DesktopSettingsDocument = Schema.Struct({
   serverExposureMode: optionalReadableKey(DesktopServerExposureModeSchema),
   tailscaleServeEnabled: optionalReadableKey(Schema.Boolean),
   tailscaleServePort: optionalReadableKey(Schema.Number),
+  trayEnabled: optionalReadableKey(Schema.Boolean),
   updateChannel: optionalReadableKey(DesktopUpdateChannelSchema),
   updateChannelConfiguredByUser: optionalReadableKey(Schema.Boolean),
   wslBackendEnabled: optionalReadableKey(Schema.Boolean),
@@ -167,6 +171,9 @@ export class DesktopAppSettings extends Context.Service<
       readonly enabled: boolean;
       readonly port: Option.Option<number>;
     }) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
+    readonly setTrayEnabled: (
+      enabled: boolean,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setUpdateChannel: (
       channel: DesktopUpdateChannel,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
@@ -233,6 +240,7 @@ function normalizeDesktopSettingsDocument(
       parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
     tailscaleServeEnabled: parsed.tailscaleServeEnabled === true,
     tailscaleServePort: normalizeTailscaleServePort(parsed.tailscaleServePort),
+    trayEnabled: parsed.trayEnabled !== false,
     updateChannel: updateChannelConfiguredByUser
       ? Option.getOrElse(parsedUpdateChannel, () => defaultSettings.updateChannel)
       : defaultSettings.updateChannel,
@@ -270,6 +278,9 @@ function toDesktopSettingsDocument(
   }
   if (settings.tailscaleServePort !== defaults.tailscaleServePort) {
     document.tailscaleServePort = settings.tailscaleServePort;
+  }
+  if (settings.trayEnabled !== defaults.trayEnabled) {
+    document.trayEnabled = settings.trayEnabled;
   }
   if (settings.updateChannel !== defaults.updateChannel) {
     document.updateChannel = settings.updateChannel;
@@ -374,6 +385,10 @@ function setWslOnly(settings: DesktopSettings, enabled: boolean): DesktopSetting
         ...settings,
         wslOnly: enabled,
       };
+}
+
+function setTrayEnabled(settings: DesktopSettings, enabled: boolean): DesktopSettings {
+  return settings.trayEnabled === enabled ? settings : { ...settings, trayEnabled: enabled };
 }
 
 function setLocalEnvironmentEnabled(settings: DesktopSettings, enabled: boolean): DesktopSettings {
@@ -572,6 +587,11 @@ export const make = Effect.gen(function* () {
 
       return yield* persist((settings) => setTailscaleServe(settings, input));
     }),
+    setTrayEnabled: Effect.fn("desktop.settings.setTrayEnabled")(function* (enabled) {
+      yield* Effect.annotateCurrentSpan({ enabled });
+
+      return yield* persist((settings) => setTrayEnabled(settings, enabled));
+    }),
     setUpdateChannel: Effect.fn("desktop.settings.setUpdateChannel")(function* (channel) {
       yield* Effect.annotateCurrentSpan({ channel });
 
@@ -642,6 +662,9 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
         ),
         setTailscaleServe: Effect.fn("DesktopAppSettings.setTailscaleServe")(function (input) {
           return update((settings) => setTailscaleServe(settings, input));
+        }),
+        setTrayEnabled: Effect.fn("DesktopAppSettings.setTrayEnabled")(function (enabled) {
+          return update((settings) => setTrayEnabled(settings, enabled));
         }),
         setUpdateChannel: Effect.fn("DesktopAppSettings.setUpdateChannel")(function (channel) {
           return update((settings) => setUpdateChannel(settings, channel));

@@ -49,6 +49,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
+import * as DesktopQuickAsk from "../quickAsk/DesktopQuickAsk.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 
@@ -147,6 +148,9 @@ const runStubbedDesktop = (stub: StubbedDesktop) =>
         Effect.provideService(DesktopApplicationMenu.DesktopApplicationMenu, {
           configure: stub.record("menu"),
         }),
+        Effect.provideService(DesktopQuickAsk.DesktopQuickAsk, {
+          configure: Effect.void,
+        } as DesktopQuickAsk.DesktopQuickAsk["Service"]),
         Effect.provideService(DesktopUpdates.DesktopUpdates, {
           configure: Effect.void,
         } as unknown as DesktopUpdates.DesktopUpdates["Service"]),

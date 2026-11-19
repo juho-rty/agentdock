@@ -73,6 +73,13 @@ export const DesktopIpcError = Schema.Union([
 ]);
 export type DesktopIpcError = typeof DesktopIpcError.Type;
 
+/** An app-owned renderer other than the main window, such as the menu bar popover. */
+export interface DesktopIpcTrustedRenderer {
+  readonly id: number;
+  readonly mainFrame: unknown;
+  isDestroyed(): boolean;
+}
+
 export interface DesktopIpcMethod<E, R> {
   readonly channel: string;
   readonly handler: (raw: unknown, event?: DesktopIpcInvokeEvent) => Effect.Effect<unknown, E, R>;
@@ -92,15 +99,28 @@ export class DesktopIpc extends Context.Service<
     readonly handleSync: <E, R>(
       input: DesktopSyncIpcMethod<E, R>,
     ) => Effect.Effect<void, DesktopIpcRegistrationError, R | Scope.Scope>;
+    readonly trustRenderer: (renderer: DesktopIpcTrustedRenderer) => Effect.Effect<void>;
   }
 >()("@t3tools/desktop/ipc/DesktopIpc") {}
 
 // ipcMain is shared by every webContents, including preview guests that load arbitrary pages.
 export const make = (
   ipcMain: DesktopIpcMain,
-  isTrustedSender: DesktopIpcSenderGuard,
-): DesktopIpc["Service"] =>
-  DesktopIpc.of({
+  isMainSender: DesktopIpcSenderGuard,
+): DesktopIpc["Service"] => {
+  const trustedRenderers = new Map<number, DesktopIpcTrustedRenderer>();
+  const isTrustedRendererSender = (event: DesktopIpcInvokeEvent) => {
+    const renderer = trustedRenderers.get(event.sender.id);
+    if (renderer === undefined) return false;
+    if (renderer.isDestroyed()) {
+      trustedRenderers.delete(event.sender.id);
+      return false;
+    }
+    return renderer.mainFrame === event.senderFrame;
+  };
+  const isTrustedSender: DesktopIpcSenderGuard = (event) =>
+    Effect.map(isMainSender(event), (trusted) => trusted || isTrustedRendererSender(event));
+  return DesktopIpc.of({
     handle: Effect.fn("desktop.ipc.registerInvoke")(function* <E, R>({
       channel,
       handler,
@@ -177,7 +197,12 @@ export const make = (
           }).pipe(Effect.orDie),
       );
     }),
+
+    trustRenderer: Effect.fn("DesktopIpc.trustRenderer")(function* (renderer) {
+      yield* Effect.sync(() => trustedRenderers.set(renderer.id, renderer));
+    }),
   });
+};
 
 export const layer = (ipcMain: DesktopIpcMain) =>
   Layer.effect(

@@ -242,6 +242,25 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   setWslOnly: (enabled) => ipcRenderer.invoke(IpcChannels.SET_WSL_ONLY_CHANNEL, enabled),
   pickFolder: (options) => ipcRenderer.invoke(IpcChannels.PICK_FOLDER_CHANNEL, options),
   getFileManagerFolder: () => ipcRenderer.invoke(IpcChannels.GET_FILE_MANAGER_FOLDER_CHANNEL),
+  onNavigate: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, path: unknown) => {
+      if (typeof path !== "string") return;
+      listener(path);
+    };
+    ipcRenderer.on(IpcChannels.NAVIGATE_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.NAVIGATE_CHANNEL, wrappedListener);
+    };
+  },
+  takePendingNavigation: () => ipcRenderer.invoke(IpcChannels.TAKE_PENDING_NAVIGATION_CHANNEL),
+  quickAskSetHeight: (height) =>
+    ipcRenderer.invoke(IpcChannels.QUICK_ASK_SET_HEIGHT_CHANNEL, height),
+  quickAskClose: () => ipcRenderer.invoke(IpcChannels.QUICK_ASK_CLOSE_CHANNEL),
+  quickAskOpenMain: (path) => ipcRenderer.invoke(IpcChannels.QUICK_ASK_OPEN_MAIN_CHANNEL, path),
+  quickAskOpenSettings: () => ipcRenderer.invoke(IpcChannels.QUICK_ASK_OPEN_SETTINGS_CHANNEL),
+  quickAskQuit: () => ipcRenderer.invoke(IpcChannels.QUICK_ASK_QUIT_CHANNEL),
+  getTrayEnabled: () => ipcRenderer.invoke(IpcChannels.GET_TRAY_ENABLED_CHANNEL),
+  setTrayEnabled: (enabled) => ipcRenderer.invoke(IpcChannels.SET_TRAY_ENABLED_CHANNEL, enabled),
   toLocalBackendPath: (backendId, path) =>
     ipcRenderer.invoke(IpcChannels.TO_LOCAL_BACKEND_PATH_CHANNEL, { backendId, path }),
   pickProjectFavicon: (initialPath) =>
