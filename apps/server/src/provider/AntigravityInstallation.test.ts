@@ -198,6 +198,7 @@ const makeHarness = Effect.fn("test.makeAntigravityInstallation")(function* (
     Effect.provideService(HostProcess.Platform, platform),
     Effect.provideService(HostProcess.Architecture, arch),
     Effect.provideService(HostProcess.Environment, { PATH: options.path ?? "" }),
+    Effect.provideService(HostProcess.HomeDirectory, baseDir),
     Effect.provideService(ModelManifest.ModelManifest, {
       current: options.manifest ?? Effect.succeed(ModelManifest.BUNDLED_MODEL_MANIFEST),
       refresh: Effect.succeed(ModelManifest.BUNDLED_MODEL_MANIFEST),
@@ -1111,6 +1112,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Antigravity inst
         expect(yield* installation.resolve("agy", { PATH: shims })).toMatchObject({
           executablePath: path.join(shims, "agy"),
           harnessPath: null,
+        });
+
+        // GUI and service launches can miss the installer's PATH entry for ~/.local/bin.
+        expect(
+          yield* installation.resolve(undefined, { PATH: "" }).pipe(Effect.flip),
+        ).toMatchObject({ operation: "resolve" });
+        const installerCli = path.join(baseDir, ".local", "bin", "agy");
+        yield* fs.makeDirectory(path.dirname(installerCli), { recursive: true });
+        yield* fs.writeFileString(installerCli, "cli", { mode: 0o755 });
+        expect(yield* installation.resolve(undefined, { PATH: "" })).toMatchObject({
+          executablePath: installerCli,
+          harnessPath: null,
+          source: "path",
         });
 
         const { installation: windows } = yield* makeHarness({ baseDir, platform: "win32" });

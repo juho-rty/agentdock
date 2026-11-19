@@ -192,6 +192,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
   const platform = yield* HostProcess.Platform;
   const arch = yield* HostProcess.Architecture;
   const environment = yield* HostProcess.Environment;
+  const homeDirectory = yield* HostProcess.HomeDirectory;
   let releaseAsset = options.releaseAsset ?? null;
   const supported =
     options.releaseAsset === undefined
@@ -406,6 +407,12 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
           if (selected) return selected;
         }
       }
+      // Google's installer puts agy here, which a GUI or service launch may not have on PATH.
+      const installerCli = yield* fromExternal(
+        path.join(homeDirectory, ".local", "bin", platform === "win32" ? "agy.exe" : "agy"),
+        "path",
+      );
+      if (installerCli) return installerCli;
       return yield* installationError(
         "resolve",
         supported

@@ -1,0 +1,30 @@
+name: AgentDock checks
+
+# Typecheck and desktop tests on every push to main and every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: voidzero-dev/setup-vp@v1
+
+      - name: Install dependencies
+        run: vp i
+
+      - name: Typecheck
+        run: vp run typecheck
+
+      - name: Desktop tests
+        working-directory: apps/desktop
+        run: vp test run

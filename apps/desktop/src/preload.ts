@@ -241,6 +241,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   setWslDistro: (distro) => ipcRenderer.invoke(IpcChannels.SET_WSL_DISTRO_CHANNEL, distro),
   setWslOnly: (enabled) => ipcRenderer.invoke(IpcChannels.SET_WSL_ONLY_CHANNEL, enabled),
   pickFolder: (options) => ipcRenderer.invoke(IpcChannels.PICK_FOLDER_CHANNEL, options),
+  getFileManagerFolder: () => ipcRenderer.invoke(IpcChannels.GET_FILE_MANAGER_FOLDER_CHANNEL),
   toLocalBackendPath: (backendId, path) =>
     ipcRenderer.invoke(IpcChannels.TO_LOCAL_BACKEND_PATH_CHANNEL, { backendId, path }),
   pickProjectFavicon: (initialPath) =>

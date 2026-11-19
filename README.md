@@ -1,3 +1,7 @@
+> **AgentDock** is a fork of T3 Code with its own name, icon, data folder (`~/.agentdock-next`)
+> and app ID, so it installs beside T3 Code. See [AGENTDOCK.md](./AGENTDOCK.md) for building,
+> releasing and syncing with upstream. The rest of this README is upstream's.
+
 <p align="center">
   <a href="https://t3.codes">
     <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="T3 Code logo" />

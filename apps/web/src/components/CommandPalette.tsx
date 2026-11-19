@@ -2546,6 +2546,54 @@ function OpenCommandPaletteDialog(props: {
           },
         ];
 
+  // WSL and Linux primaries cannot open a Finder or File Explorer path directly.
+  const canSuggestFileManagerFolder =
+    isBrowsing &&
+    addProjectCloneFlow === null &&
+    newProjectFlow === null &&
+    browseEnvironmentId !== null &&
+    browseEnvironmentId === primaryEnvironmentId &&
+    (browseEnvironmentPlatform === "MacIntel" || browseEnvironmentPlatform === "Win32") &&
+    typeof window !== "undefined" &&
+    window.desktopBridge?.getFileManagerFolder !== undefined;
+  const [fileManagerFolder, setFileManagerFolder] = useState<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks the OS for the front Finder/File Explorer folder when add-project browsing opens
+  useEffect(() => {
+    if (!canSuggestFileManagerFolder) return;
+    let cancelled = false;
+    void window.desktopBridge
+      ?.getFileManagerFolder()
+      .catch(() => null)
+      .then((folder) => {
+        if (!cancelled) setFileManagerFolder(folder ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSuggestFileManagerFolder]);
+  const fileManagerFolderGroup: CommandPaletteView["groups"][number] | null =
+    canSuggestFileManagerFolder && fileManagerFolder !== null
+      ? {
+          value: "file-manager-folder",
+          label: gt("From {app}", {
+            app: getLocalFileManagerName(navigator.platform, messages),
+          }),
+          items: [
+            {
+              kind: "action",
+              value: `file-manager-folder:${fileManagerFolder}`,
+              searchTerms: [fileManagerFolder],
+              title: fileManagerFolder.split(/[\\/]/).findLast(Boolean) ?? fileManagerFolder,
+              description: fileManagerFolder,
+              icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+              run: async () => {
+                await handleAddProject(fileManagerFolder);
+              },
+            },
+          ],
+        }
+      : null;
+
   let displayedGroups: CommandPaletteView["groups"] = filteredGroups;
   if (newProjectFlow !== null) {
     displayedGroups = [
@@ -2558,7 +2606,10 @@ function OpenCommandPaletteDialog(props: {
   } else if (addProjectCloneFlow?.step === "confirm") {
     displayedGroups = relativePathNeedsActiveProject ? [] : cloneDestinationBrowseGroups;
   } else if (isBrowsing) {
-    displayedGroups = relativePathNeedsActiveProject ? [] : browseGroups;
+    displayedGroups = [
+      ...(fileManagerFolderGroup ? [fileManagerFolderGroup] : []),
+      ...(relativePathNeedsActiveProject ? [] : browseGroups),
+    ];
   }
   const resultRows = buildCommandPaletteRows(displayedGroups);
   const autoHighlightsFirstRow =

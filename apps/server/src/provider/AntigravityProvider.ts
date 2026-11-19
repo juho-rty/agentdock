@@ -150,6 +150,11 @@ function isMissingInstallation(error: EffectAcpErrors.AcpError | ProviderSetupEr
   );
 }
 
+// agy releases before ACP support reject the `acp` subcommand or the flags T3 passes with it.
+const OUTDATED_CLI_PATTERN = /unknown (?:sub)?command|flag provided but not defined/i;
+const OUTDATED_CLI_MESSAGE =
+  "This Antigravity CLI is too old to serve ACP. Run `agy update`, or install the Antigravity runtime in provider settings.";
+
 interface AntigravityProviderState {
   readonly draft: ServerProviderDraft;
   readonly authRevision: number;
@@ -291,9 +296,12 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           ? failure.detail.trim() || "Antigravity could not complete its local health check."
           : missingInstallation
             ? "Antigravity ACP runtime is not installed or its executable could not be found."
-            : failure
-              ? "Antigravity could not complete its local health check."
-              : `Antigravity did not respond to its local health check within ${timeoutMs / 1_000} seconds.`;
+            : failure?._tag === "AcpProcessExitedError" &&
+                OUTDATED_CLI_PATTERN.test(failure.stderr ?? "")
+              ? OUTDATED_CLI_MESSAGE
+              : failure
+                ? "Antigravity could not complete its local health check."
+                : `Antigravity did not respond to its local health check within ${timeoutMs / 1_000} seconds.`;
     const supportsTextGeneration =
       initialized !== undefined ? yield* options.supportsTextGeneration : false;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);

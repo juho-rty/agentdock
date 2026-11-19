@@ -1398,6 +1398,9 @@ ${associatedDomains}
     <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Asking Finder for its front window's folder is an Apple Event. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
   </dict>
 </plist>
 `;
@@ -2857,6 +2860,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           "AgentDock lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:
           "AgentDock lets commands run by terminals and coding agents use the microphone.",
+        NSAppleEventsUsageDescription:
+          "AgentDock asks Finder for the folder in its front window so you can add it as a project.",
         // macOS lists an app under Default web browser only when it opens web
         // pages as documents as well as http and https links (see protocols).
         CFBundleDocumentTypes: [

@@ -81,6 +81,7 @@ import {
   takeLegacyLocalStorage,
 } from "./methods/legacyLocalStorage.ts";
 import { getWslState, setWslBackendEnabled, setWslDistro, setWslOnly } from "./methods/wsl.ts";
+import { getFileManagerFolder } from "./methods/fileManagerFolder.ts";
 import {
   getCliCommandState,
   installCliCommand,
@@ -148,6 +149,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(setWslBackendEnabled);
   yield* ipc.handle(setWslDistro);
   yield* ipc.handle(setWslOnly);
+  yield* ipc.handle(getFileManagerFolder);
 
   yield* ipc.handle(pickFolder);
   yield* ipc.handle(toLocalBackendPath);

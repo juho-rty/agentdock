@@ -553,8 +553,16 @@ it.layer(layerTest)("Antigravity provider snapshots", (it) => {
           }),
           installed: false,
         },
+        {
+          error: new EffectAcpErrors.AcpProcessExitedError({
+            code: 1,
+            stderr: 'Error: unknown command "acp" for "agy"',
+          }),
+          installed: true,
+          message: "This Antigravity CLI is too old to serve ACP.",
+        },
       ];
-      for (const { error, installed } of failures) {
+      for (const { error, installed, message } of failures) {
         yield* harness.provider.onSessionStarted(started, "/workspace");
         yield* harness.provider.onAvailableCommands(commands, "/workspace");
         yield* Ref.set(harness.probe, Effect.fail(error));
@@ -568,6 +576,7 @@ it.layer(layerTest)("Antigravity provider snapshots", (it) => {
         expect(snapshot.slashCommands).toHaveLength(installed ? 2 : 0);
         expect(snapshot.workspaceSnapshots).toHaveLength(installed ? 1 : 0);
         expect(snapshot.supportsTextGeneration).toBe(installed);
+        if (message) expect(snapshot.message).toContain(message);
       }
     }),
   );
