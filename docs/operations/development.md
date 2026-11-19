@@ -59,7 +59,7 @@ Running `vp run dev` through an agent's own shell tool does not attach it to thi
 
 ### State and ports
 
-Linked worktrees default to their own `.t3/userdata`, even when `T3CODE_HOME` is set.
+Linked worktrees default to their own `.t3/userdata`, even when `AGENTDOCK_HOME` is set.
 The main checkout defaults to `~/.t3/dev`. An explicit `--home-dir` wins in both cases.
 The first start in a worktree seeds its empty database from a read-only copy of
 `~/.t3/userdata/statev2.sqlite` if the source is at most 500 MiB. Larger sources warn

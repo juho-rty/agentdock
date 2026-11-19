@@ -110,7 +110,7 @@ export function manualServerUpdateCommand(
     return `npm install --global --prefix ${quote(installation.prefix)} t3@${targetVersion}`;
   }
   if (installation?.kind === "t3-launcher") {
-    // An inherited T3CODE_HOME would otherwise send the update to a home the launcher is not in.
+    // An inherited AGENTDOCK_HOME would otherwise send the update to a home the launcher is not in.
     return `${quote(installation.launcher)} update --base-dir ${quote(installation.baseDir)} ${targetVersion}`;
   }
   const runner =

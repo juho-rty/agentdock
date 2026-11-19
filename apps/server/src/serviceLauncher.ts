@@ -285,7 +285,7 @@ async function pathExists(target: string): Promise<boolean> {
 
 const MANAGED_SERVICE_ENV_NAMES = new Set([
   "PATH",
-  "T3CODE_HOME",
+  "AGENTDOCK_HOME",
   "T3_BOOT_SERVICE_UNIT",
   SERVICE_LAUNCHER_CONTEXT_ENV,
 ]);
@@ -1531,9 +1531,9 @@ export interface LauncherOptions {
 }
 
 export async function main(options: LauncherOptions = {}): Promise<void> {
-  const baseDir = options.baseDir ?? process.env.T3CODE_HOME;
+  const baseDir = options.baseDir ?? process.env.AGENTDOCK_HOME;
   if (baseDir === undefined || baseDir.trim() === "") {
-    throw new Error("T3CODE_HOME is required by the AgentDock service launcher.");
+    throw new Error("AGENTDOCK_HOME is required by the AgentDock service launcher.");
   }
   const output =
     options.logFile === undefined ? undefined : NodeFS.openSync(options.logFile, "a", 0o600);
@@ -1547,7 +1547,7 @@ export async function main(options: LauncherOptions = {}): Promise<void> {
     // changes only what the server gets.
     const managerEnvironment = {
       ...process.env,
-      T3CODE_HOME: baseDir,
+      AGENTDOCK_HOME: baseDir,
       ...(options.serviceUnit === undefined ? {} : { [SERVICE_UNIT_ENV]: options.serviceUnit }),
     };
     const environment = await readServiceEnvironment(baseDir, managerEnvironment);
