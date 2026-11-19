@@ -10,7 +10,7 @@ import { makeComponentLogger } from "./DesktopObservability.ts";
 // AppImage mounts change each run; the launcher must mount the image itself.
 const { logInfo, logWarning } = makeComponentLogger("desktop-cli-shim");
 
-export const MARKER = "Written by T3 Code: runs the desktop app's bundled t3 CLI.";
+export const MARKER = "Written by Agent dock: runs the desktop app's bundled CLI.";
 
 const SERVER_ENTRY = "apps/server/dist/bin.mjs";
 
@@ -120,7 +120,7 @@ export const launcherPath = (environment: DesktopEnvironment.DesktopEnvironment[
   environment.path.join(
     environment.baseDir,
     "bin",
-    environment.platform === "win32" ? "t3.cmd" : "t3",
+    environment.platform === "win32" ? "agentdock.cmd" : "agentdock",
   );
 
 export const install = Effect.gen(function* () {
