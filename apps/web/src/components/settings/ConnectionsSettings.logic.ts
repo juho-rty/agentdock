@@ -3,6 +3,7 @@ import * as DateTime from "effect/DateTime";
 import { msg } from "gt-react";
 
 import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
+import { createAdvertisedEndpoint } from "@t3tools/shared/advertisedEndpoint";
 import { getPairingTokenFromUrl, setPairingTokenOnUrl } from "@t3tools/shared/remote";
 import { readHostedPairingRequest } from "../../hostedPairing";
 import { m, type MessageResolver } from "../../i18n/messages";
@@ -25,6 +26,7 @@ import {
   type DesktopUpdateState,
   type DesktopWslState,
   type EnvironmentId,
+  type PhoneAccessStatus,
   type ServerAuthPolicy,
   type ServerDirectEndpoint,
 } from "@t3tools/contracts";
@@ -534,4 +536,27 @@ export function describeConnectDeviceClient(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
   return bits.length > 0 ? [...new Set(bits)].join(" · ") : resolve(msg("Unknown device"));
+}
+
+/**
+ * The phone relay as a pairing endpoint once the server is reachable through it. It becomes the
+ * default, since a phone away from this network can reach no other address.
+ */
+export function phoneAccessEndpoint(
+  status: PhoneAccessStatus | null,
+  label: string,
+): AdvertisedEndpoint | null {
+  if (status?.state !== "connected") return null;
+  return createAdvertisedEndpoint({
+    id: "phone-relay",
+    label,
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- company name
+    provider: { id: "cloudflare-phone-relay", label: "Cloudflare", kind: "tunnel", isAddon: false },
+    httpBaseUrl: status.relayUrl,
+    reachability: "public",
+    // The relay serves this app itself, so links open it directly rather than a hosted app.
+    hostedHttpsCompatibility: "unknown",
+    source: "server",
+    isDefault: true,
+  });
 }

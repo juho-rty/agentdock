@@ -248,6 +248,7 @@ import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
   RelayClientStatusSchema,
+  PhoneAccessStatusSchema,
 } from "./relayClient.ts";
 import {
   ORCHESTRATION_V2_WS_METHODS,
@@ -592,6 +593,7 @@ export const WS_METHODS = {
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
+  phoneAccessGetStatus: "phoneAccess.getStatus",
 
   pullRequestsList: "pullRequests.list",
   pullRequestsListStats: "pullRequests.listStats",
@@ -1086,6 +1088,12 @@ const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
 const WsCloudGetRelayClientStatusRpc = Rpc.make(WS_METHODS.cloudGetRelayClientStatus, {
   payload: Schema.Struct({}),
   success: RelayClientStatusSchema,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsPhoneAccessGetStatusRpc = Rpc.make(WS_METHODS.phoneAccessGetStatus, {
+  payload: Schema.Struct({}),
+  success: PhoneAccessStatusSchema,
   error: EnvironmentAuthorizationError,
 });
 
@@ -2349,6 +2357,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerReportClientActivityRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
+  WsPhoneAccessGetStatusRpc,
   WsPullRequestsListRpc,
   WsPullRequestsListStatsRpc,
   WsPullRequestsFilterOptionsRpc,

@@ -75,9 +75,17 @@ builds, so install the new DMG from `Dropbox/Apps/AgentDock-installers` instead.
 
 ## Phone
 
-Open **Settings -> Sharing & access** in the desktop app, enable **Network access**,
-and create a pairing link. Open that link in the phone's browser (same Wi-Fi or
-Tailscale). Add it to the home screen for an app-like window.
+From anywhere: in **Settings -> Sharing & access**, turn on **Phone access (Cloudflare)**.
+The server starts a Cloudflare quick tunnel and registers it with the
+`agentdock-phone` Worker, so phones always open
+<https://agentdock-phone.juho-agentdock.workers.dev>. Network access does not need to be
+on. Once the row shows that address, create a pairing link under **Authorized clients**
+(it uses the phone address by default) and open it or scan its QR code on the phone. Add
+the page to the home screen for an app-like window. The Worker, its deploy script and how
+to reset its claim are in `infra/phone-relay/README.md`.
+
+On the same Wi-Fi or Tailscale you can instead enable **Network access** and pair over
+the local address.
 
 ## The old AgentDock
 
