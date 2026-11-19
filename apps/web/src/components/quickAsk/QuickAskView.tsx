@@ -1,8 +1,8 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import { canCreateProjectInEnvironment } from "@t3tools/client-runtime/operations/projects";
-import { inferProjectTitleFromPath } from "@t3tools/client-runtime/state/projects";
+import { inferProjectTitleFromPath, isChatProject } from "@t3tools/client-runtime/state/projects";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -22,11 +22,13 @@ import {
   BarChart3Icon,
   ChevronDownIcon,
   FolderIcon,
+  HammerIcon,
+  MessageCircleIcon,
   PowerIcon,
   SettingsIcon,
   SquareArrowOutUpRightIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_DISPLAY_NAME } from "../../branding";
 import { m } from "../../i18n/messages";
@@ -47,6 +49,7 @@ import {
   resolveProjectDefaultProviderModelSelection,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
+import { startChatThread } from "../../hooks/useChatProject";
 import { useMergedSettings } from "../../hooks/useSettings";
 import { useProjects, useVisibleThreadShells } from "../../state/entities";
 import { usePrimaryEnvironment } from "../../state/environments";
@@ -75,7 +78,9 @@ import {
   type QuickAskMode,
   type QuickAskProjectChip,
   type QuickAskThreadRow,
+  readQuickAskMode,
   selectQuickAskThreads,
+  writeQuickAskMode,
 } from "./QuickAsk.logic";
 
 const STATUS_DOT: Record<QuickAskThreadRow["status"], string> = {
@@ -128,8 +133,16 @@ export function QuickAskView() {
     reportFailure: false,
   });
 
-  // Chat mode hook: a "chat" mode will answer inline instead of opening the main window.
-  const [mode] = useState<QuickAskMode>("agent");
+  const registry = useContext(RegistryContext);
+  const [mode, setModeState] = useState<QuickAskMode>(() =>
+    readQuickAskMode(typeof window === "undefined" ? undefined : window.localStorage),
+  );
+  const setMode = (next: QuickAskMode) => {
+    setModeState(next);
+    writeQuickAskMode(typeof window === "undefined" ? undefined : window.localStorage, next);
+    textareaRef.current?.focus();
+  };
+  const isChat = mode === "chat";
   const [fileManagerFolder, setFileManagerFolder] = useState<string | null>(null);
   const [selectedChipKey, setSelectedChipKey] = useState<string | null>(null);
   const [modelOverride, setModelOverride] = useState<ModelSelection | null>(null);
@@ -137,14 +150,18 @@ export function QuickAskView() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const environmentProjects = projects.filter((project) => project.environmentId === environmentId);
+  const environmentProjects = projects.filter(
+    (project) =>
+      project.environmentId === environmentId &&
+      !isChatProject(project, serverConfig?.chatWorkspaceRoot),
+  );
   const chips = buildQuickAskProjectChips({
     fileManagerFolder,
     projects: environmentProjects,
     threads: threads.filter((thread) => thread.environmentId === environmentId),
   });
   const selectedChip = chips.find((chip) => chip.key === selectedChipKey) ?? chips[0] ?? null;
-  const selectedProject = selectedChip?.project ?? null;
+  const selectedProject = isChat ? null : (selectedChip?.project ?? null);
   const projectId: ProjectId | null = selectedProject?.id ?? null;
   const entries = providerInstanceEntriesFor(providers, serverSettings, projectId).filter(
     isProviderInstancePickerVisible,
@@ -166,7 +183,7 @@ export function QuickAskView() {
     text.trim().length > 0 &&
     !sending &&
     environmentId !== null &&
-    selectedChip !== null &&
+    (isChat ? serverConfig?.chatWorkspaceRoot != null : selectedChip !== null) &&
     modelSelection !== null &&
     selectedEntry !== undefined &&
     isProviderInstancePickerReady(selectedEntry);
@@ -313,13 +330,34 @@ export function QuickAskView() {
     openInMainWindow(threadPath(targetEnvironmentId, threadId));
   };
 
+  const submitChat = async (
+    message: string,
+    targetEnvironmentId: EnvironmentId,
+    selection: ModelSelection,
+  ) => {
+    const ref = await startChatThread({
+      registry,
+      environmentId: targetEnvironmentId,
+      prompt: message,
+      modelSelection: selection,
+      title: deriveThreadTitleSeed({ text: message, attachments: [] }, m),
+    });
+    setText("");
+    setModelOverride(null);
+    openInMainWindow(threadPath(ref.environmentId, ref.threadId));
+  };
+
   const send = () => {
-    if (!canSend || environmentId === null || selectedChip === null || modelSelection === null) {
-      return;
-    }
+    if (!canSend || environmentId === null || modelSelection === null) return;
+    if (!isChat && selectedChip === null) return;
     setSending(true);
     setError(null);
-    void submit(text.trim(), selectedChip, environmentId, modelSelection)
+    const message = text.trim();
+    void (
+      isChat || selectedChip === null
+        ? submitChat(message, environmentId, modelSelection)
+        : submit(message, selectedChip, environmentId, modelSelection)
+    )
       .catch((cause: unknown) => {
         setError(thrownErrorMessage(cause, m) ?? gt("Could not start the thread."));
       })
@@ -327,7 +365,11 @@ export function QuickAskView() {
   };
 
   const hintProvider = selectedEntry?.displayName ?? null;
-  const hintFolder = selectedChip ? abbreviateHomePath(selectedChip.path) : null;
+  const hintFolder = isChat
+    ? gt("Conversation only")
+    : selectedChip
+      ? abbreviateHomePath(selectedChip.path)
+      : null;
 
   return (
     <div
@@ -378,8 +420,25 @@ export function QuickAskView() {
       ) : null}
 
       <section className="mx-2 mb-2 flex flex-col gap-2 rounded-xl border border-border bg-card p-2.5">
-        {/* Chat mode hook: the Agent | Chat toggle renders here and `send` branches on `mode`. */}
         <div className="flex items-center gap-1.5">
+          <div
+            role="radiogroup"
+            aria-label={gt("Mode")}
+            className="flex shrink-0 rounded-md border border-border p-0.5"
+          >
+            <QuickAskModeButton
+              selected={!isChat}
+              icon={<HammerIcon className="size-3" aria-hidden />}
+              label={gt("Agent")}
+              onSelect={() => setMode("agent")}
+            />
+            <QuickAskModeButton
+              selected={isChat}
+              icon={<MessageCircleIcon className="size-3" aria-hidden />}
+              label={gt("Chat")}
+              onSelect={() => setMode("chat")}
+            />
+          </div>
           <QuickAskModelPicker
             entries={entries}
             selection={modelSelection}
@@ -387,7 +446,7 @@ export function QuickAskView() {
             onSelect={(selection) => setModelOverride(selection)}
           />
         </div>
-        {chips.length > 0 ? (
+        {isChat ? null : chips.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {chips.map((chip) => {
               const selected = chip.key === selectedChip?.key;
@@ -424,7 +483,7 @@ export function QuickAskView() {
             ref={textareaRef}
             value={text}
             rows={3}
-            placeholder={gt("Ask an agent…")}
+            placeholder={isChat ? gt("Ask anything") : gt("Ask an agent…")}
             aria-label={gt("Message")}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
@@ -624,5 +683,30 @@ function QuickAskModelPicker(props: {
         </MenuRadioGroup>
       </MenuPopup>
     </Menu>
+  );
+}
+
+function QuickAskModeButton(props: {
+  readonly selected: boolean;
+  readonly icon: React.ReactNode;
+  readonly label: string;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={props.selected}
+      onClick={props.onSelect}
+      className={cn(
+        "flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors",
+        props.selected
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {props.icon}
+      {props.label}
+    </button>
   );
 }

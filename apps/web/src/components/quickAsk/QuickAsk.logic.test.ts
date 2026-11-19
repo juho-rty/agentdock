@@ -8,7 +8,9 @@ import {
   abbreviateHomePath,
   buildQuickAskProjectChips,
   folderNameFromPath,
+  readQuickAskMode,
   selectQuickAskThreads,
+  writeQuickAskMode,
 } from "./QuickAsk.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -115,5 +117,32 @@ describe("abbreviateHomePath", () => {
     ["/opt/work", "/opt/work"],
   ])("abbreviates %s", (input, expected) => {
     expect(abbreviateHomePath(input)).toBe(expected);
+  });
+});
+
+describe("quick ask mode storage", () => {
+  it("defaults to agent and remembers chat", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+    };
+    expect(readQuickAskMode(storage)).toBe("agent");
+    writeQuickAskMode(storage, "chat");
+    expect(readQuickAskMode(storage)).toBe("chat");
+    expect(readQuickAskMode(undefined)).toBe("agent");
+  });
+
+  it("falls back to agent when storage throws", () => {
+    const throwing = {
+      getItem: (): string | null => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(readQuickAskMode(throwing)).toBe("agent");
+    expect(() => writeQuickAskMode(throwing, "chat")).not.toThrow();
   });
 });

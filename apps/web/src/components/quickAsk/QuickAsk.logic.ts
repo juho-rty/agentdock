@@ -8,12 +8,32 @@ import { resolveThreadActivityTimestamp } from "@t3tools/client-runtime/state/th
 import { resolveSidebarThreadStatus } from "../Sidebar.logic";
 
 /**
- * The composer's modes. Only "agent" exists today: a send starts a new agent thread and opens it in
- * the main window.
- * Chat mode hook: add "chat" here, render the Agent | Chat toggle at the "Chat mode hook" slot in
- * QuickAskView, and branch `send` on the mode.
+ * The composer's modes. "agent" starts a thread in the chosen project folder; "chat" starts a
+ * conversation-only thread in the shared Chats project. Either way the thread opens in the main
+ * window.
  */
-export type QuickAskMode = "agent";
+export type QuickAskMode = "agent" | "chat";
+
+const QUICK_ASK_MODE_STORAGE_KEY = "agentdock:quick-ask-mode";
+
+export function readQuickAskMode(storage: Pick<Storage, "getItem"> | undefined): QuickAskMode {
+  try {
+    return storage?.getItem(QUICK_ASK_MODE_STORAGE_KEY) === "chat" ? "chat" : "agent";
+  } catch {
+    return "agent";
+  }
+}
+
+export function writeQuickAskMode(
+  storage: Pick<Storage, "setItem"> | undefined,
+  mode: QuickAskMode,
+): void {
+  try {
+    storage?.setItem(QUICK_ASK_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Remembering the mode is a convenience; private windows may refuse storage.
+  }
+}
 
 const QUICK_ASK_THREAD_LIMIT = 5;
 const QUICK_ASK_PROJECT_CHIP_LIMIT = 5;
