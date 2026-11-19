@@ -4,7 +4,7 @@ import {
   normalizeProviderAccentColor,
   resolveProviderInstanceDisplayName,
 } from "@t3tools/client-runtime/state/provider-instance-display";
-import { paceOf, remainingPercent } from "@t3tools/shared/usageLimits";
+import { paceOf, paceRemainingPercent, remainingPercent } from "@t3tools/shared/usageLimits";
 import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon } from "lucide-react";
@@ -15,7 +15,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { cn } from "../../lib/utils";
 import { primaryServerProvidersAtom } from "../../state/server";
 import { getProviderStatusKey, PROVIDER_STATUS_STYLES } from "../settings/providerStatus";
-import { barColor, LimitWindows, PaceIcon } from "../usage/UsageLimits";
+import { barColor, LimitWindows, PaceIcon, usePaceMark } from "../usage/UsageLimits";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useSidebar } from "../ui/sidebar";
 
@@ -83,6 +83,8 @@ function WindowLine({
   const m = useMessages();
   const remaining = remainingPercent(window);
   const pace = paceOf(window, now);
+  const timeLeft = paceRemainingPercent(window, now);
+  const [barRef, paceMark] = usePaceMark(timeLeft);
   const resetsIn = formatResetsIn(window, now, m, "in");
   const minutes = window.windowDurationMins;
   const label =
@@ -100,11 +102,22 @@ function WindowLine({
   return (
     <span className="flex w-full min-w-0 items-center gap-2 text-2xs tabular-nums">
       <span className="w-8 shrink-0 truncate text-muted-foreground">{label}</span>
-      <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-        <span
-          className="absolute inset-y-0 start-0 rounded-full"
-          style={{ width: `${remaining}%`, backgroundColor: color }}
-        />
+      {/* The tick marks where even spending would leave the bar at this point in the window. */}
+      <span ref={barRef} className="relative h-2.5 min-w-0 flex-1">
+        <span className="absolute inset-0" style={paceMark?.gap}>
+          <span className="absolute inset-x-0 inset-y-[3px] rounded-full bg-muted" />
+          <span
+            className="absolute inset-y-[3px] start-0 rounded-full"
+            style={{ width: `${remaining}%`, backgroundColor: color }}
+          />
+        </span>
+        {paceMark ? (
+          <span
+            aria-hidden
+            className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-foreground/80"
+            style={paceMark.tick}
+          />
+        ) : null}
       </span>
       <span className={cn("w-8 shrink-0 text-end", remainingTone(remaining))}>{remaining}%</span>
       <span className="flex w-14 shrink-0 items-center justify-end gap-1 text-muted-foreground">

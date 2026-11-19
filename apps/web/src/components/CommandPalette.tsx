@@ -2547,8 +2547,15 @@ function OpenCommandPaletteDialog(props: {
         ];
 
   // WSL and Linux primaries cannot open a Finder or File Explorer path directly.
+  // Offered while browsing for a folder, and one step earlier — when choosing where a project
+  // comes from or which project a new thread starts in — so the open folder is a single click.
+  const fileManagerSuggestionStep =
+    !isBrowsing &&
+    currentView !== null &&
+    (currentView.groups[0]?.value === sourceSelectionViewValue ||
+      currentView.groups[0]?.value === NEW_THREAD_IN_GROUP);
   const canSuggestFileManagerFolder =
-    isBrowsing &&
+    (isBrowsing || fileManagerSuggestionStep) &&
     addProjectCloneFlow === null &&
     newProjectFlow === null &&
     browseEnvironmentId !== null &&
@@ -2605,6 +2612,8 @@ function OpenCommandPaletteDialog(props: {
     displayedGroups = [];
   } else if (addProjectCloneFlow?.step === "confirm") {
     displayedGroups = relativePathNeedsActiveProject ? [] : cloneDestinationBrowseGroups;
+  } else if (fileManagerSuggestionStep && fileManagerFolderGroup && query.trim().length === 0) {
+    displayedGroups = [fileManagerFolderGroup, ...filteredGroups];
   } else if (isBrowsing) {
     displayedGroups = [
       ...(fileManagerFolderGroup ? [fileManagerFolderGroup] : []),
