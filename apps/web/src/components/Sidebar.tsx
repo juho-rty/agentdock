@@ -3542,6 +3542,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               showJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
                             }
                             currentEnvironmentId={primaryEnvironmentId}
+                            showMachine={environmentLabelById.size > 1}
                             environmentLabel={
                               environmentLabelById.get(thread.environmentId) ?? null
                             }

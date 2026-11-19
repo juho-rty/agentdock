@@ -25,9 +25,6 @@ import {
 } from "./MobileHome.logic";
 import { useMobileHomeFilters } from "./useMobileHomeFilters";
 
-const GLASS_CLASS =
-  "border border-border/70 bg-popover/85 shadow-lg shadow-black/10 backdrop-blur-xl dark:shadow-black/40";
-
 /** Starts a draft in the home's filtered project, or the most recent one. */
 function useMobileNewThread() {
   const projects = useProjects();
@@ -69,8 +66,8 @@ function TabLink(props: {
       aria-label={props.label}
       aria-current={props.active ? "page" : undefined}
       className={cn(
-        "flex h-11 min-w-0 flex-1 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent",
-        props.active && "bg-foreground/[0.08] text-foreground",
+        "liquid-press relative flex h-11 min-w-0 flex-1 items-center justify-center rounded-full text-muted-foreground outline-none [--liquid-press-scale:0.9] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        props.active && "text-foreground",
       )}
     >
       <Icon aria-hidden className="size-5.5" strokeWidth={props.active ? 2.25 : 1.9} />
@@ -88,6 +85,10 @@ export function MobileTabBarView(props: {
   readonly reserveSpace?: boolean;
 }) {
   const gt = useGT();
+  const tabs: ReadonlyArray<MobileTab> = props.pullRequestsSupported
+    ? ["threads", "pullRequests", "usage", "settings"]
+    : ["threads", "usage", "settings"];
+  const activeIndex = props.activeTab === null ? -1 : tabs.indexOf(props.activeTab);
   return (
     <nav
       aria-label={gt("Main tabs")}
@@ -98,12 +99,17 @@ export function MobileTabBarView(props: {
       )}
     >
       <div className="flex items-center gap-3 px-4 pb-2.5">
-        <div
-          className={cn(
-            "pointer-events-auto flex h-14 min-w-0 flex-1 items-center gap-1 rounded-full px-1.5",
-            GLASS_CLASS,
+        <div className="liquid-glass pointer-events-auto relative flex h-14 min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
+          {activeIndex < 0 ? null : (
+            <span
+              aria-hidden
+              className="liquid-tab-indicator pointer-events-none absolute inset-y-0 left-1.5 my-auto h-11 rounded-full bg-foreground/[0.08]"
+              style={{
+                width: `calc((100% - 0.75rem - ${tabs.length - 1} * 0.25rem) / ${tabs.length})`,
+                translate: `calc(${activeIndex} * (100% + 0.25rem)) 0`,
+              }}
+            />
           )}
-        >
           <TabLink
             to="/"
             label={gt("Threads")}
@@ -135,10 +141,7 @@ export function MobileTabBarView(props: {
           type="button"
           aria-label={gt("New thread")}
           onClick={props.onNewThread}
-          className={cn(
-            "pointer-events-auto flex size-14 shrink-0 items-center justify-center rounded-full text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:scale-95",
-            GLASS_CLASS,
-          )}
+          className="liquid-glass liquid-press pointer-events-auto flex size-14 shrink-0 items-center justify-center rounded-full text-foreground outline-none [--liquid-press-scale:0.92] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
           <SquarePenIcon aria-hidden className="size-5.5" />
         </button>

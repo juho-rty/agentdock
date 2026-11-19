@@ -10,7 +10,7 @@ import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { ChevronDownIcon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
 import { openCommandPalette } from "../../commandPaletteBus";
@@ -55,6 +55,7 @@ import {
 import { useMobileHomeFilters } from "./useMobileHomeFilters";
 
 const ALL_VALUE = "all";
+const MOBILE_THREAD_OPEN_VIEW_TRANSITION = { types: ["liquid-forward"] };
 
 type MachineKind = Parameters<typeof EnvironmentMachineIcon>[0]["kind"];
 type ProviderEntries = ReadonlyMap<string, ProviderInstanceEntry>;
@@ -75,7 +76,7 @@ function FilterMenu(props: {
           <button
             type="button"
             className={cn(
-              "flex h-9 min-w-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+              "liquid-press flex h-9 min-w-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               selected === null
                 ? "border-border/70 bg-secondary/60 text-foreground"
                 : "border-primary/40 bg-primary/10 text-foreground",
@@ -185,6 +186,7 @@ function ThreadRow(props: {
   readonly row: MobileHomeThreadRow<EnvironmentThreadShell>;
   readonly context: ThreadRowContext;
   readonly working: boolean;
+  readonly index: number;
 }) {
   const m = useMessages();
   const { thread } = props.row;
@@ -195,12 +197,16 @@ function ThreadRow(props: {
   const startedMs = startedAt === null ? Number.NaN : Date.parse(startedAt);
 
   return (
-    <li className="group/row">
+    <li
+      className="liquid-rise group/row"
+      style={{ "--liquid-index": props.index } as CSSProperties}
+    >
       <Link
         to="/$environmentId/$threadId"
         params={{ environmentId: thread.environmentId, threadId: thread.id }}
+        viewTransition={MOBILE_THREAD_OPEN_VIEW_TRANSITION}
         data-mobile-thread-row={thread.id}
-        className="flex items-start gap-3 px-5 py-2.5 outline-none transition-colors focus-visible:bg-accent/60 active:bg-accent/60"
+        className="liquid-press flex items-start gap-3 px-5 py-2.5 outline-none [--liquid-press-scale:0.985] focus-visible:bg-accent/60 active:bg-accent/60"
       >
         <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center text-muted-foreground">
           {project === undefined || project.isChat === true ? (
@@ -303,7 +309,7 @@ export function MobileHomeView(props: {
             type="button"
             aria-label={gt("Search")}
             onClick={props.onSearch}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-secondary/60 text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent"
+            className="liquid-press flex size-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-secondary/60 text-foreground outline-none [--liquid-press-scale:0.92] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent"
           >
             <SearchIcon aria-hidden className="size-[1.125rem]" />
           </button>
@@ -342,10 +348,11 @@ export function MobileHomeView(props: {
         </div>
         {sections.threads.length > 0 ? (
           <ul aria-label={gt("Threads")}>
-            {sections.threads.map((row) => (
+            {sections.threads.map((row, index) => (
               <ThreadRow
                 key={`${row.thread.environmentId}:${row.thread.id}`}
                 row={row}
+                index={index}
                 context={props.context}
                 working={false}
               />
@@ -363,7 +370,7 @@ export function MobileHomeView(props: {
               <ChevronDownIcon
                 aria-hidden
                 className={cn(
-                  "size-4 transition-transform",
+                  "size-4 transition-transform duration-300 ease-(--liquid-spring)",
                   props.workingExpanded ? "" : "-rotate-90",
                 )}
               />
@@ -373,10 +380,11 @@ export function MobileHomeView(props: {
             </button>
             {props.workingExpanded ? (
               <ul aria-label={gt("Working")}>
-                {sections.working.map((row) => (
+                {sections.working.map((row, index) => (
                   <ThreadRow
                     key={`${row.thread.environmentId}:${row.thread.id}`}
                     row={row}
+                    index={index}
                     context={props.context}
                     working
                   />

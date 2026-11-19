@@ -58,6 +58,8 @@ export interface SettingsSearchItem {
   readonly searchTerms?: ReadonlyArray<string>;
   readonly scope?: SettingsSearchScope;
   readonly desktopOnly?: boolean;
+  /** Only in a browser; the desktop app has its own equivalent. */
+  readonly browserOnly?: boolean;
   readonly macOnly?: boolean;
   readonly windowsOnly?: boolean;
   readonly releaseChannelOnly?: boolean;
@@ -725,6 +727,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: msg("Thread notifications"),
     to: "/settings/general",
     searchTerms: [msg("notification sound alert completion input approval desktop")],
+  },
+  {
+    id: "phone-push-notifications",
+    title: msg("Push notifications on this device"),
+    to: "/settings/general",
+    browserOnly: true,
+    searchTerms: [msg("push phone mobile notification alert home screen background")],
   },
   {
     id: "in-app-notifications",
@@ -1645,6 +1654,7 @@ export function settingsForThisPlatform(
   return items.filter(
     (item) =>
       (isElectron || item.desktopOnly !== true) &&
+      (!isElectron || item.browserOnly !== true) &&
       (!item.releaseChannelOnly || isElectron || HOSTED_APP_CHANNEL !== null) &&
       (!item.secretsFeatureOnly || isSecretsFeatureEnabled) &&
       (!item.macOnly || isMacPlatform(platform)) &&

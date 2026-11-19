@@ -2649,3 +2649,287 @@ code {
 .messages-timeline-scroll:focus-visible {
   outline: none;
 }
+
+/* Phone "liquid glass": shared materials and spring motion for the narrow-screen chrome.
+   Everything below is either a utility only phone surfaces use or sits behind the max-md query. */
+:root {
+  --liquid-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --liquid-spring-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+  --liquid-duration: 420ms;
+  --liquid-duration-exit: 180ms;
+  --liquid-press-scale: 0.96;
+  --liquid-glass-blur: calc(var(--glass-blur) * 1.75);
+  --liquid-glass-saturation: 1.7;
+  --liquid-glass-edge: color-mix(in srgb, var(--contrast-foreground) 12%, transparent);
+  --liquid-glass-highlight: rgb(255 255 255 / 55%);
+  --liquid-glass-shadow: 0 10px 30px -12px rgb(0 0 0 / 28%), 0 2px 6px -2px rgb(0 0 0 / 10%);
+
+  @variant dark {
+    --liquid-glass-saturation: 1.4;
+    --liquid-glass-highlight: rgb(255 255 255 / 14%);
+    --liquid-glass-shadow: 0 12px 34px -12px rgb(0 0 0 / 70%), 0 2px 6px -2px rgb(0 0 0 / 40%);
+  }
+
+  @supports (transition-timing-function: linear(0, 1)) {
+    --liquid-spring: linear(
+      0,
+      0.036,
+      0.127,
+      0.251,
+      0.389,
+      0.527,
+      0.657,
+      0.771,
+      0.867,
+      0.943,
+      1,
+      1.041,
+      1.066,
+      1.08,
+      1.084,
+      1.081,
+      1.073,
+      1.063,
+      1.051,
+      1.04,
+      1.029,
+      1.019,
+      1.011,
+      1.005,
+      1,
+      0.997,
+      0.994,
+      0.993,
+      1
+    );
+    --liquid-spring-smooth: linear(
+      0,
+      0.04,
+      0.13,
+      0.241,
+      0.355,
+      0.463,
+      0.559,
+      0.642,
+      0.713,
+      0.771,
+      0.819,
+      0.857,
+      0.888,
+      0.913,
+      0.932,
+      0.948,
+      0.96,
+      0.969,
+      0.976,
+      0.982,
+      0.986,
+      0.989,
+      0.992,
+      0.994,
+      1
+    );
+  }
+}
+
+/* Floating phone chrome: tinted blur with a lit top edge and a soft drop shadow. */
+@utility liquid-glass {
+  background: color-mix(
+    in srgb,
+    var(--popover) max(50%, calc(var(--glass-opacity) * 1.6 - 60%)),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+  border: 1px solid var(--liquid-glass-edge);
+  box-shadow:
+    inset 0 1px 0 var(--liquid-glass-highlight),
+    var(--liquid-glass-shadow);
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--popover);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--popover);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Springy press feedback; set --liquid-press-scale on large targets to soften it. */
+@utility liquid-press {
+  transition:
+    scale 320ms var(--liquid-spring),
+    background-color 150ms,
+    border-color 150ms,
+    color 150ms;
+
+  &:active {
+    scale: var(--liquid-press-scale);
+    transition-duration: 110ms, 150ms, 150ms, 150ms;
+    transition-timing-function: ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      scale: 1;
+    }
+  }
+}
+
+/* One-shot entrance for list rows; --liquid-index staggers the first few. */
+@utility liquid-rise {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: liquid-rise 380ms var(--liquid-spring-smooth) backwards;
+    animation-delay: calc(min(var(--liquid-index, 0), 8) * 28ms);
+  }
+}
+
+@keyframes liquid-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
+/* The selected-tab pill slides between tabs instead of jumping. */
+@utility liquid-tab-indicator {
+  transition: translate var(--liquid-duration) var(--liquid-spring);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --glass-blur: 20px;
+    --glass-saturation: 1.5;
+
+    @variant dark {
+      --glass-blur: 22px;
+      --glass-saturation: 1.3;
+    }
+  }
+
+  /* Menus and popovers grow out of their trigger and settle with a small overshoot. */
+  [data-slot="menu-popup"],
+  [data-slot="menu-sub-content"],
+  [data-slot="popover-popup"],
+  [data-slot="select-popup"] {
+    transition:
+      scale var(--liquid-duration) var(--liquid-spring),
+      opacity 160ms ease-out,
+      width 150ms,
+      height 150ms;
+
+    &[data-starting-style] {
+      scale: 0.88;
+      opacity: 0;
+    }
+
+    &[data-ending-style] {
+      scale: 0.95;
+      opacity: 0;
+      transition:
+        scale var(--liquid-duration-exit) ease-in,
+        opacity var(--liquid-duration-exit) ease-in;
+    }
+
+    &[data-instant] {
+      transition: none;
+    }
+  }
+
+  [data-slot="menu-popup"],
+  [data-slot="menu-sub-content"] {
+    box-shadow:
+      inset 0 1px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow);
+  }
+
+  /* Sheets and dialogs ride a critically damped spring so they never overshoot the edge. */
+  [data-slot="sheet-popup"],
+  [data-slot="sidebar"][data-mobile="true"],
+  [data-slot="dialog-popup"],
+  [data-slot="alert-dialog-popup"],
+  [data-slot="command-dialog-popup"] {
+    transition-duration: 380ms;
+    transition-timing-function: var(--liquid-spring-smooth);
+
+    &[data-ending-style] {
+      transition-duration: 240ms;
+    }
+  }
+
+  [data-slot="sheet-backdrop"] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgb(0 0 0 / 28%);
+    transition-duration: 320ms;
+  }
+
+  /* Home ↔ thread: the outgoing page recedes while the incoming one glides in. */
+  html:active-view-transition-type(liquid-forward),
+  html:active-view-transition-type(liquid-back) {
+    &::view-transition-old(root) {
+      animation: liquid-nav-out 200ms ease-in both;
+    }
+
+    &::view-transition-new(root) {
+      animation: liquid-nav-in 400ms var(--liquid-spring-smooth) both;
+    }
+  }
+
+  html:active-view-transition-type(liquid-forward) {
+    --liquid-nav-shift: 28px;
+  }
+
+  html:active-view-transition-type(liquid-back) {
+    --liquid-nav-shift: -28px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="menu-popup"],
+    [data-slot="menu-sub-content"],
+    [data-slot="popover-popup"],
+    [data-slot="select-popup"] {
+      transition: opacity 120ms linear;
+
+      &[data-starting-style],
+      &[data-ending-style] {
+        scale: 1;
+      }
+    }
+
+    html:active-view-transition-type(liquid-forward),
+    html:active-view-transition-type(liquid-back) {
+      &::view-transition-old(root),
+      &::view-transition-new(root) {
+        animation: none;
+      }
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root {
+      --glass-blur: 0px !important;
+      --glass-opacity: 100% !important;
+    }
+  }
+}
+
+@keyframes liquid-nav-out {
+  to {
+    opacity: 0;
+    translate: calc(var(--liquid-nav-shift) * -0.5) 0;
+  }
+}
+
+@keyframes liquid-nav-in {
+  from {
+    opacity: 0;
+    translate: var(--liquid-nav-shift) 0;
+  }
+}

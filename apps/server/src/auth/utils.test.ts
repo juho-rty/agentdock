@@ -153,6 +153,21 @@ describe("session cookie isolation", () => {
     expect(first).not.toBe(second);
   });
 
+  it("keeps a desktop server cookie stable across port changes", () => {
+    const name = (port: number) =>
+      resolveSessionCookieName({
+        mode: "desktop",
+        port,
+        host: "127.0.0.1",
+        instanceKey: "/tmp/agentdock",
+        environmentId: "environment-one",
+        development: false,
+      });
+
+    expect(name(3773)).toMatch(/^t3_session_[a-f0-9]{12}$/);
+    expect(name(3774)).toBe(name(3773));
+  });
+
   it("keeps a remote web server cookie stable across port changes", () => {
     const first = resolveSessionCookieName({
       mode: "web",

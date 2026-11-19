@@ -403,7 +403,9 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
             size="icon"
             className="pointer-events-auto size-[var(--workspace-titlebar-control-size)]! [-webkit-app-region:no-drag]"
             aria-label={gt("Back to threads")}
-            onClick={() => void router.navigate({ to: "/" })}
+            onClick={() =>
+              void router.navigate({ to: "/", viewTransition: { types: ["liquid-back"] } })
+            }
           >
             <ChevronLeftIcon className="size-5" />
           </Button>

@@ -65,7 +65,7 @@ export class AgentAwarenessRelay extends Context.Service<
   }
 >()("t3/relay/AgentAwarenessRelay") {}
 
-function eventThreadId(event: OrchestrationV2DomainEvent): ThreadId {
+export function eventThreadId(event: OrchestrationV2DomainEvent): ThreadId {
   return event.threadId;
 }
 
@@ -77,7 +77,7 @@ function isTurnItemPayload(
   );
 }
 
-function shouldPublishAgentAwarenessEvent(
+export function shouldPublishAgentAwarenessEvent(
   event: Pick<OrchestrationV2DomainEvent, "type"> & { readonly payload?: unknown },
 ): boolean {
   if (
@@ -315,7 +315,7 @@ interface SubagentAlert {
   readonly updatedAt: string;
 }
 
-const waitingApprovalId = (thread: AgentAwarenessThread | null) =>
+export const waitingApprovalId = (thread: AgentAwarenessThread | null) =>
   thread !== null && thread.archivedAt === null && subagentAwaitsUser(thread)
     ? thread.pendingRuntimeRequest?.id
     : undefined;
@@ -371,7 +371,7 @@ function resolveAgentAwarenessRelayPublishSnapshot(input: {
 }
 
 // Checked at completion time, so a completion processed after the wake stays silent too.
-function snoozedCompletion(
+export function snoozedCompletion(
   thread: AgentAwarenessThread,
   state: { readonly phase: string } | null,
 ): boolean {

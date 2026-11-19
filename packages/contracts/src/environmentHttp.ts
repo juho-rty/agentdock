@@ -1057,6 +1057,48 @@ const webhookEndpoint = {
 } as const;
 const WEBHOOK_PATH = "/api/hooks/:hookId/:token";
 
+export const WebPushVapidPublicKey = Schema.Struct({
+  /** The server's VAPID key as a base64url P-256 point, for `pushManager.subscribe`. */
+  publicKey: Schema.String,
+});
+export type WebPushVapidPublicKey = typeof WebPushVapidPublicKey.Type;
+
+/** What a browser's `PushSubscription.toJSON()` carries. */
+export const WebPushSubscriptionInput = Schema.Struct({
+  endpoint: Schema.String.check(Schema.isMaxLength(2048)),
+  keys: Schema.Struct({
+    p256dh: Schema.String.check(Schema.isMaxLength(256)),
+    auth: Schema.String.check(Schema.isMaxLength(256)),
+  }),
+});
+export type WebPushSubscriptionInput = typeof WebPushSubscriptionInput.Type;
+
+/** Push notifications for a browser that stays subscribed while its page is closed. */
+class EnvironmentWebPushHttpApi extends HttpApiGroup.make("webPush")
+  .add(
+    HttpApiEndpoint.get("vapidPublicKey", "/api/push/vapid-public-key", {
+      headers: OptionalBearerHeaders,
+      success: WebPushVapidPublicKey,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("subscribe", "/api/push/subscribe", {
+      headers: OptionalBearerHeaders,
+      payload: WebPushSubscriptionInput,
+      success: HttpApiSchema.NoContent,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("unsubscribe", "/api/push/unsubscribe", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Struct({ endpoint: Schema.String.check(Schema.isMaxLength(2048)) }),
+      success: HttpApiSchema.NoContent,
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 class EnvironmentWebhooksHttpApi extends HttpApiGroup.make("webhooks")
   .add(HttpApiEndpoint.post("webhookPost", WEBHOOK_PATH, webhookEndpoint))
   .add(HttpApiEndpoint.put("webhookPut", WEBHOOK_PATH, webhookEndpoint))
@@ -1071,5 +1113,6 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
   .add(EnvironmentVoiceHttpApi)
+  .add(EnvironmentWebPushHttpApi)
   .add(EnvironmentConnectHttpApi)
   .add(EnvironmentWebhooksHttpApi) {}

@@ -401,7 +401,7 @@ export class SessionStore extends Context.Service<
   SessionStore,
   {
     readonly cookieName: string;
-    readonly legacyCookieName: string | undefined;
+    readonly legacyCookieName: string | RegExp | undefined;
     readonly issue: (input?: {
       readonly ttl?: Duration.Duration;
       readonly subject?: string;

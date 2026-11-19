@@ -732,7 +732,7 @@ function parseDpopToken(request: HttpServerRequest.HttpServerRequest): string | 
 export function selectRequestCredential(
   request: HttpServerRequest.HttpServerRequest,
   cookieName: string,
-  legacyCookieName: string | undefined,
+  legacyCookieName: string | RegExp | undefined,
 ) {
   const cookieToken = request.cookies[cookieName];
   if (cookieToken) {
@@ -749,7 +749,11 @@ export function selectRequestCredential(
     return { token: dpopToken, source: "dpop" } as const;
   }
 
-  const legacyToken = legacyCookieName ? request.cookies[legacyCookieName] : undefined;
+  const legacyKey =
+    legacyCookieName instanceof RegExp
+      ? Object.keys(request.cookies).find((name) => legacyCookieName.test(name))
+      : legacyCookieName;
+  const legacyToken = legacyKey ? request.cookies[legacyKey] : undefined;
   if (legacyToken !== undefined) {
     return { token: legacyToken, source: "legacy-cookie" } as const;
   }

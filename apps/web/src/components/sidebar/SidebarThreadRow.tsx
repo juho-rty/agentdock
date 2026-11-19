@@ -599,6 +599,8 @@ type SidebarThreadRowProps = {
   readOpensPullRequestsInRightPanel: () => boolean;
   jumpLabel: string | null;
   currentEnvironmentId: string | null;
+  /** More than one computer is linked, so every row says which one it runs on. */
+  showMachine: boolean;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   scratchMachineLabel: string | null;
@@ -1258,10 +1260,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   ) : null;
 
   const remoteMachineIcon =
-    isRemote && !showsScratchMachine ? (
-      <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-        <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
-      </span>
+    (isRemote || props.showMachine) && !showsScratchMachine ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70" />
+          }
+        >
+          <EnvironmentMachineIcon
+            aria-hidden
+            kind={props.environmentMachine}
+            className="size-3.5"
+          />
+        </TooltipTrigger>
+        {props.environmentLabel ? (
+          <TooltipPopup side="top">{props.environmentLabel}</TooltipPopup>
+        ) : null}
+      </Tooltip>
     ) : null;
   const diff = latestRunDiff(thread);
   // Only the trailing icons would remain, so the row moves them to the title line instead.

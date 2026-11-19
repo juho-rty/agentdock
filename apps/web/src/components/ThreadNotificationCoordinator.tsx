@@ -33,6 +33,7 @@ import {
   threadNotificationTag,
   unlockNotificationAudio,
 } from "../threadNotifications";
+import { isWebPushEnabled } from "../webPush";
 import { resolveBackgroundThreadRequest } from "./backgroundThreadAnnouncement";
 import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
 import {
@@ -204,6 +205,8 @@ export function startThreadNotifications(
     }
     if (
       !hasDesktopNotifications(mode) ||
+      // The server's push already shows this alert on this device.
+      isWebPushEnabled() ||
       (document.visibilityState === "visible" && document.hasFocus()) ||
       typeof Notification === "undefined" ||
       Notification.permission !== "granted"

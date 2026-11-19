@@ -30,12 +30,12 @@ const layerEnvironmentAuthPolicy = (overrides?: Partial<ServerConfig.ServerConfi
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
   "EnvironmentAuthPolicy.layer",
   (it) => {
-    it.effect("keeps desktop cookies port-scoped on the port a second instance lands on", () =>
+    it.effect("names desktop cookies after the environment, not the port it landed on", () =>
       Effect.gen(function* () {
         const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
         const descriptor = yield* policy.getDescriptor();
 
-        expect(descriptor.sessionCookieName).toBe("t3_session_3774");
+        expect(descriptor.sessionCookieName).toMatch(/^t3_session_[a-f0-9]{12}$/);
       }).pipe(
         Effect.provide(
           layerEnvironmentAuthPolicy({

@@ -280,15 +280,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodePlatformCrypto.layer))(
     it.effect("prefers a bearer token over a stale legacy cookie", () =>
       Effect.gen(function* () {
         const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        const sessions = yield* SessionStore.SessionStore;
         const bearer = yield* serverAuth.issueSession();
         const verified = yield* serverAuth.authenticateHttpRequest({
-          cookies: { [sessions.legacyCookieName ?? "t3_session"]: "stale" },
+          cookies: { t3_session: "stale" },
           headers: { authorization: `Bearer ${bearer.token}` },
         } as never);
 
         expect(verified.sessionId).toBe(bearer.sessionId);
       }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "192.168.1.50" }))),
+    );
+
+    it.effect("accepts a desktop cookie named after an earlier port", () =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const session = yield* serverAuth.issueSession();
+        const verified = yield* serverAuth.authenticateHttpRequest({
+          cookies: { t3_session_3774: session.token },
+          headers: {},
+        } as never);
+
+        expect(verified.sessionId).toBe(session.sessionId);
+      }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "desktop", port: 3773 }))),
     );
 
     it.effect("prefers a bearer token over an empty primary cookie", () =>

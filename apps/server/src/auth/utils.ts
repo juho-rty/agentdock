@@ -14,7 +14,11 @@ import * as Result from "effect/Result";
 
 const SESSION_COOKIE_NAME = "t3_session";
 
-/** Cookies span ports; use separate names for servers sharing a hostname. */
+/**
+ * Cookies span ports; use separate names for servers sharing a hostname. The desktop server's
+ * port can change between starts, so its name comes from the environment instead: a paired
+ * phone would otherwise be signed out by a restart.
+ */
 export function resolveSessionCookieName(input: {
   readonly mode: "web" | "desktop";
   readonly port: number;
@@ -23,18 +27,18 @@ export function resolveSessionCookieName(input: {
   readonly environmentId: string;
   readonly development: boolean;
 }): string {
-  if (input.mode === "desktop") {
-    return `${SESSION_COOKIE_NAME}_${input.port}`;
-  }
-
   const instanceHash = NodeCrypto.createHash("sha256")
     .update(
-      !input.development && isRemoteReachableHost(input.host)
+      input.mode === "desktop" || (!input.development && isRemoteReachableHost(input.host))
         ? input.environmentId
         : input.instanceKey,
     )
     .digest("hex")
     .slice(0, 12);
+
+  if (input.mode === "desktop") {
+    return `${SESSION_COOKIE_NAME}_${instanceHash}`;
+  }
 
   if (!input.development && isRemoteReachableHost(input.host)) {
     return `${SESSION_COOKIE_NAME}_${instanceHash}`;
@@ -47,7 +51,9 @@ export function resolveLegacySessionCookieName(input: {
   readonly mode: "web" | "desktop";
   readonly host: string | undefined;
   readonly development: boolean;
-}): string | undefined {
+}): string | RegExp | undefined {
+  // Desktop servers used to name the cookie after their port, whichever port that was.
+  if (input.mode === "desktop") return /^t3_session_\d+$/;
   return input.mode === "web" && !input.development && isRemoteReachableHost(input.host)
     ? SESSION_COOKIE_NAME
     : undefined;

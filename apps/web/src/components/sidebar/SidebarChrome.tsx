@@ -302,6 +302,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label={gt("Usage")}
             onClick={handleUsageClick}
           />
+          <SidebarDevices />
         </>
       )}
       <SidebarThreadUndoNotice />
@@ -313,7 +314,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter>
-      <SidebarDevices />
       <SidebarProviderUsage />
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
