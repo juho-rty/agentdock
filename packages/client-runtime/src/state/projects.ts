@@ -146,6 +146,16 @@ export function isScratchProject(
   );
 }
 
+export function isChatProject(
+  project: { readonly workspaceRoot: string; readonly isChat?: true },
+  chatWorkspaceRoot: string | null | undefined,
+): boolean {
+  return (
+    project.isChat === true ||
+    (chatWorkspaceRoot != null && findProjectByPath([project], chatWorkspaceRoot) !== undefined)
+  );
+}
+
 export function inferProjectTitleFromPath(value: string): string {
   const normalized = normalizeProjectPathForDispatch(value);
   const absolutePath = splitAbsolutePath(normalized);

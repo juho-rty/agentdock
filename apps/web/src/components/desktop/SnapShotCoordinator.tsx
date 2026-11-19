@@ -26,7 +26,7 @@ import { scopedProjectKey } from "@t3tools/client-runtime/environment";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { getClientSettings, useClientSettings } from "../../hooks/useSettings";
-import { readThreadShell } from "../../state/entities";
+import { readThreadShell, useProjects } from "../../state/entities";
 import { resolveThreadActionProjectRef } from "../../lib/chatThreadActions";
 import {
   beginSnapShotAnimation,
@@ -248,13 +248,24 @@ export function SnapShotCoordinator() {
     null,
     lastUsedProjectKeySchema,
   );
+  const projects = useProjects();
   const currentProject = activeThread ?? activeDraftThread;
-  const currentProjectKey = currentProject
-    ? scopedProjectKey({
-        environmentId: currentProject.environmentId,
-        projectId: currentProject.projectId,
-      })
-    : null;
+  // Chats are not a project to return to for new agent threads.
+  const currentIsChat =
+    currentProject != null &&
+    projects.some(
+      (project) =>
+        project.isChat === true &&
+        project.environmentId === currentProject.environmentId &&
+        project.id === currentProject.projectId,
+    );
+  const currentProjectKey =
+    currentProject && !currentIsChat
+      ? scopedProjectKey({
+          environmentId: currentProject.environmentId,
+          projectId: currentProject.projectId,
+        })
+      : null;
   const rememberProject = useEffectEvent((projectKey: string) => {
     if (projectKey !== lastUsedProjectKey) setLastUsedProjectKey(projectKey);
   });

@@ -215,6 +215,7 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import {
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
+  T3_CODE_CHAT_MODE_INSTRUCTIONS,
   T3_CODE_ORCHESTRATION_INSTRUCTIONS,
 } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
@@ -2194,6 +2195,8 @@ export function makeClaudeQueryOptions(input: {
   readonly appendSystemPromptFileText?: string;
   // Flag settings, because a user's settings.json env beats the process env in Claude Code.
   readonly toolSearchOverride?: "true";
+  /** A Chat thread: append the chat instructions. */
+  readonly conversationOnly?: boolean;
 }): ClaudeAgentSdkQueryOptions {
   const compiledSelection = compileClaudeModelSelection(input.modelSelection, input.modelCatalog);
   const {
@@ -2340,6 +2343,7 @@ export function makeClaudeQueryOptions(input: {
               (deviceInstructions
                 ? `\n${T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH}\n`
                 : "")),
+        ...(input.conversationOnly === true ? [T3_CODE_CHAT_MODE_INSTRUCTIONS] : []),
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
@@ -12933,6 +12937,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? {}
               : { mcpServers: mcpOverrides.mcpServers }),
             deviceToolsAvailable: mcpSession?.capabilities?.has("device") === true,
+            conversationOnly: turnInput.runtimePolicy.conversationOnly === true,
             permissionMode: queryPolicy.permissionMode,
             ...(queryPolicy.allowDangerouslySkipPermissions === undefined
               ? {}

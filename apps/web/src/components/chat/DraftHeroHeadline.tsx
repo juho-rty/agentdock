@@ -4,14 +4,15 @@ import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/c
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { T, useGT, Var } from "gt-react";
-import { FolderPlusIcon } from "lucide-react";
+import { FolderPlusIcon, HammerIcon, MessagesSquareIcon } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
 import { useRef, useState } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { readLastUsedProjectKey, useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useChatProject } from "~/hooks/useChatProject";
 import { useOrderWhileOpen } from "~/hooks/useOrderWhileOpen";
 import { useProjectPin } from "~/hooks/useProjectGroupUpdate";
 import { useScratchProject } from "~/hooks/useScratchProject";
@@ -43,6 +44,7 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "../ui/combobox";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InlineButton } from "../ui/button";
 import { DraftProjectName } from "./DraftProjectName";
@@ -82,6 +84,7 @@ export function DraftHeroHeadline({
   );
   const openAddProject = () => openCommandPalette({ open: "add-project" });
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
+  const { chatEnvironmentId, openChat } = useChatProject();
   const openProjectDraft = useNewThreadHandler();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -140,6 +143,8 @@ export function DraftHeroHeadline({
   const isScratchDraft =
     activeProject !== null &&
     isScratchProject(activeProject, scratchWorkspaceRootFor(activeProject.environmentId));
+  const isChatDraft = activeProject?.isChat === true;
+  const chatTargetEnvironmentId = chatEnvironmentId(activeProjectRef?.environmentId ?? null);
 
   // Pinning from a row keeps rows in place while the picker is open.
   const pickerItems: readonly PickerItem[] = useOrderWhileOpen(
@@ -201,6 +206,56 @@ export function DraftHeroHeadline({
     selectProject(project, deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings));
     return true;
   };
+
+  const startChat = async () => {
+    if (chatTargetEnvironmentId === null || isChatDraft) return;
+    const request = Symbol("chat");
+    pendingScratchRef.current = request;
+    const requestedTarget = draftTargetKey();
+    const project = await openChat(chatTargetEnvironmentId);
+    if (!project || pendingScratchRef.current !== request || draftTargetKey() !== requestedTarget) {
+      return;
+    }
+    pendingScratchRef.current = null;
+    selectProject(project, deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings));
+  };
+  const startAgent = () => {
+    if (!isChatDraft) return;
+    const lastUsedKey = readLastUsedProjectKey();
+    const entry =
+      menuEntries.find(
+        ({ targetProject }) =>
+          scopedProjectKey(scopeProjectRef(targetProject.environmentId, targetProject.id)) ===
+          lastUsedKey,
+      ) ?? menuEntries[0];
+    if (entry) {
+      selectProject(entry.targetProject, entry.group.projectKey);
+    } else {
+      openAddProject();
+    }
+  };
+  const modeToggle =
+    chatTargetEnvironmentId === null && !isChatDraft ? null : (
+      <ToggleGroup
+        aria-label={gt("Conversation kind")}
+        className="pointer-events-auto mb-4"
+        value={[isChatDraft ? "chat" : "agent"]}
+        onValueChange={(next) => {
+          const value = next[0];
+          if (value === "chat") void startChat();
+          if (value === "agent") startAgent();
+        }}
+      >
+        <Toggle value="agent">
+          <HammerIcon />
+          <T>Agent</T>
+        </Toggle>
+        <Toggle value="chat">
+          <MessagesSquareIcon />
+          <T>Chat</T>
+        </Toggle>
+      </ToggleGroup>
+    );
 
   const projectSelector = shouldShowProjectMenu ? (
     <Combobox
@@ -357,8 +412,23 @@ export function DraftHeroHeadline({
     );
   }
 
+  if (isChatDraft) {
+    return (
+      <div className="mx-auto flex w-full max-w-5xl flex-col items-center">
+        {modeToggle}
+        <h1 className="w-full text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+          <T>Who do you want to talk to?</T>
+        </h1>
+        <p className="mt-2 flex h-6 w-full items-center justify-center text-muted-foreground text-sm">
+          <T>Conversation only, no folder or tools</T>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col items-center">
+      {modeToggle}
       {hasResolvedProject && !isScratchDraft ? (
         <DraftHeroProjectHeading projectName={activeProjectTitle ?? gt("Choose a project")}>
           {projectSelector}

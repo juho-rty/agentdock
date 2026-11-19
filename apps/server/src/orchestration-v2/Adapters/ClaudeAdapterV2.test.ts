@@ -87,7 +87,10 @@ import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { WorkflowAgentTranscriptReadObserver } from "../workflowAgentTranscript.ts";
 import * as ServerConfig from "../../config.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
-import { T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH } from "@t3tools/provider-core/server/orchestrationInstructions";
+import {
+  T3_CODE_CHAT_MODE_INSTRUCTIONS,
+  T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
+} from "@t3tools/provider-core/server/orchestrationInstructions";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools.ts";
 import { HtmlToolkit } from "../../mcp/toolkits/html/tools.ts";
@@ -848,6 +851,21 @@ describe("ClaudeAdapterV2 native protocol logging", () => {
     const logged = ClaudeAdapterV2.loggedClaudeQueryOptions(options);
     assert.equal(logged.hasMcpServers, true);
     assert.notInclude(JSON.stringify(logged), "secret-claude-token");
+  });
+
+  it("appends the chat instructions to a conversation-only thread's system prompt", () => {
+    const append = (conversationOnly: boolean) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+        nativeThreadId: "native-thread-claude-chat",
+        resume: false,
+        cwd: "/chats",
+        conversationOnly,
+      });
+      return (options.systemPrompt as { readonly append?: string } | undefined)?.append ?? "";
+    };
+    assert.include(append(true), T3_CODE_CHAT_MODE_INSTRUCTIONS);
+    assert.notInclude(append(false), T3_CODE_CHAT_MODE_INSTRUCTIONS);
   });
 
   it("logs --settings key names without their values", () => {

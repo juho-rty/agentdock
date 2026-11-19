@@ -1893,7 +1893,15 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          const chatNote =
+            compact || goalCommand || turnInput.resume === true
+              ? ""
+              : RuntimePolicy.conversationOnlyInlineNote({
+                  driver: session.driver,
+                  runtimePolicy: turnInput.runtimePolicy,
+                  userText,
+                });
+          const context = [delivery.context, sideChatContext, restartNote, chatNote]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;

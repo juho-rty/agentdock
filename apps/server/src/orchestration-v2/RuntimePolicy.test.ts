@@ -4,6 +4,7 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   type RuntimeMode,
   type ServerProvider,
@@ -12,10 +13,14 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Stream from "effect/Stream";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { acpPermissionDisposition } from "@t3tools/provider-acp/server/clientPolicy";
+import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
@@ -78,7 +83,7 @@ const providerInstanceFor = (instanceId: ProviderInstanceId) =>
     },
   }) as ProviderInstance;
 
-const layerWithPolicy = (policy?: ManagedPolicySummary) =>
+const layerWithPolicy = (policy?: ManagedPolicySummary, workspaceRoot = "/project-root") =>
   RuntimePolicy.layerFromProjectStore.pipe(
     Layer.provide(ServerSettings.layerTest({}, policy)),
     Layer.provide(
@@ -96,7 +101,7 @@ const layerWithPolicy = (policy?: ManagedPolicySummary) =>
           Effect.succeedSome({
             projectId,
             title: "Project",
-            workspaceRoot: "/project-root",
+            workspaceRoot,
             defaultModelSelection: null,
             defaultThreadEnvMode: null,
             hasCustomTitle: false,
@@ -187,4 +192,56 @@ it.layer(
       assert.equal(allowed.maxRuntimeMode, "auto-accept-edits");
     }),
   );
+});
+
+const chatLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const path = yield* Path.Path;
+    return layerWithPolicy(undefined, path.join(config.baseDir, "chats"));
+  }),
+).pipe(
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-runtime-policy-chat-" })),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+it.layer(chatLayer)("RuntimePolicyV2 for the Chats project", (it) => {
+  it.effect("runs chat threads read-only without approvals, whatever mode the thread asks", () =>
+    Effect.gen(function* () {
+      const policy = yield* RuntimePolicy.RuntimePolicyV2;
+      const now = yield* DateTime.now;
+      const resolved = yield* policy.resolve({
+        thread: makeThread({ now, worktreePath: null, runtimeMode: "full-access" }),
+        modelSelection,
+      });
+      assert.equal(resolved.conversationOnly, true);
+      assert.equal(resolved.runtimeMode, "approval-required");
+      assert.equal(resolved.approvalPolicy, "never");
+      assert.deepEqual(resolved.sandboxPolicy, {
+        type: "readOnly",
+        access: { type: "fullAccess" },
+        networkAccess: false,
+      });
+    }),
+  );
+});
+
+it("adds the chat note inline only for drivers without a system context channel", () => {
+  const chat = RuntimePolicy.conversationOnlyRuntimePolicy(
+    ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      cwd: "/chats",
+      runtimeMode: "full-access",
+      interactionMode: "default",
+    }),
+  );
+  const note = (driver: string, userText = "hello") =>
+    RuntimePolicy.conversationOnlyInlineNote({
+      driver: ProviderDriverKind.make(driver),
+      runtimePolicy: chat,
+      userText,
+    });
+  assert.equal(note("claudeAgent"), "");
+  assert.equal(note("codex"), "");
+  assert.include(note("opencode"), "Chat mode");
+  assert.equal(note("opencode", "/compact"), "");
 });

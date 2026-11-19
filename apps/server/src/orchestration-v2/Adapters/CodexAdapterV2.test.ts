@@ -1,3 +1,4 @@
+import { T3_CODE_CHAT_MODE_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import {
@@ -237,6 +238,36 @@ describe("CodexAdapterV2 runtime policy", () => {
       assert.equal(fullAccess.approvalsReviewer, "user");
       assert.equal(fullAccess.sandboxPolicy?.type, "dangerFullAccess");
     }),
+  );
+
+  it.effect(
+    "tells a conversation-only Codex turn it is a chat, read-only and never approving",
+    () =>
+      Effect.gen(function* () {
+        const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+          nativeThreadId: "native-chat",
+          codexInput: [{ type: "text", text: "hello" }],
+          runtimePolicy: {
+            runtimeMode: "approval-required",
+            interactionMode: "default",
+            cwd: "/chats",
+            approvalPolicy: "never",
+            sandboxPolicy: {
+              type: "readOnly",
+              access: { type: "fullAccess" },
+              networkAccess: false,
+            },
+            conversationOnly: true,
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        });
+        assert.equal(params.approvalPolicy, "never");
+        assert.equal(params.sandboxPolicy?.type, "readOnly");
+        assert.deepEqual(params.additionalContext?.["t3_code_chat"], {
+          kind: "application",
+          value: T3_CODE_CHAT_MODE_INSTRUCTIONS,
+        });
+      }),
   );
 
   it.effect("sends the chosen cyber access program, else the model's default", () =>

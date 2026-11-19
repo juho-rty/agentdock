@@ -449,6 +449,7 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
+  projectsEnsureChat: "projects.ensureChat",
   projectsCreateNew: "projects.createNew",
   projectsCreateFromThread: "projects.createFromThread",
 
@@ -1564,6 +1565,12 @@ const WsProjectsEnsureScratchRpc = Rpc.make(WS_METHODS.projectsEnsureScratch, {
   error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectsEnsureChatRpc = Rpc.make(WS_METHODS.projectsEnsureChat, {
+  payload: Schema.Struct({}),
+  success: ProjectEnsureScratchResult,
+  error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsCreateNewRpc = Rpc.make(WS_METHODS.projectsCreateNew, {
   payload: ProjectCreateNewInput,
   success: ProjectCreateNewResult,
@@ -2396,6 +2403,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
+  WsProjectsEnsureChatRpc,
   WsProjectsCreateNewRpc,
   WsProjectsCreateFromThreadRpc,
   WsProjectsWriteFileRpc,

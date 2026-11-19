@@ -1801,8 +1801,10 @@ export default function ChatView(props: ChatViewProps) {
           providerSubagentModels,
           reportedModelSelection,
         );
+  const activeProjectIsChat = activeProject?.isChat === true;
   const showComposerContextStrip =
     !embedded &&
+    !activeProjectIsChat &&
     shouldShowComposerContextStrip({
       isDraftHeroState,
       persistInActiveThreads: settings.persistComposerContextStrip,
@@ -3784,8 +3786,10 @@ export default function ChatView(props: ChatViewProps) {
                                 }
                                 onComposerOverlayHeightChange={publishComposerOverlayHeightStable}
                                 permissionsShownInStrip={
-                                  showComposerContextStrip && !isServerThread
+                                  (showComposerContextStrip && !isServerThread) ||
+                                  activeProjectIsChat
                                 }
+                                conversationOnly={activeProjectIsChat}
                                 promptRef={promptRef}
                                 composerImagesRef={composerImagesRef}
                                 composerFilesRef={composerFilesRef}

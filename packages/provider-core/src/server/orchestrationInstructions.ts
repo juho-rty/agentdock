@@ -139,3 +139,6 @@ export function t3OrchestrationSystemPrompt(
 ): string | undefined {
   return hasT3Mcp ? orchestrationInstructions(hasDeviceTools) : undefined;
 }
+
+export const T3_CODE_CHAT_MODE_INSTRUCTIONS =
+  "Chat mode: the user wants a conversation, not a coding task. Answer directly in the user's language. Do not modify files or run commands, except to read files the user attached.";

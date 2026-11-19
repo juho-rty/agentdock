@@ -11,6 +11,7 @@ import { getProjectOrderKey } from "@t3tools/client-runtime/state/project-groupi
 import { useProjects, useVisibleThreadShells } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
+import { withoutChatProjects } from "../sidebarThreadMode";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 
@@ -60,7 +61,7 @@ export const selectCommandPaletteClientSettings = (settings: ClientSettings) => 
 });
 
 export function useSortedProjectGroups(environmentLabelById: ReadonlyMap<EnvironmentId, string>) {
-  const projects = useProjects();
+  const projects = withoutChatProjects(useProjects());
   const threads = useVisibleThreadShells();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const clientSettings = useClientSettings(selectCommandPaletteClientSettings);

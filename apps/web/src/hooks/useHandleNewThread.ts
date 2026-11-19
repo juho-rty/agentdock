@@ -469,12 +469,13 @@ export function resolveDefaultProjectRef(
   const lastUsed = projects.find(
     (project) =>
       project.archivedAt == null &&
+      project.isChat !== true &&
       scopedProjectKey(scopeProjectRef(project.environmentId, project.id)) === lastUsedProjectKey,
   );
   if (lastUsed) return scopeProjectRef(lastUsed.environmentId, lastUsed.id);
   if (!fallbackReady) return null;
   const [defaultProject] = orderItemsByPreferredIds({
-    items: projects.filter((project) => project.archivedAt == null),
+    items: projects.filter((project) => project.archivedAt == null && project.isChat !== true),
     preferredIds: projectOrder,
     getId: getProjectOrderKey,
     getPreferenceIds: (project) => [

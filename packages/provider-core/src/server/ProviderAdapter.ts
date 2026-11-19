@@ -56,6 +56,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
    * it; adapters use it to refuse native mode choices a user makes beside AgentDock's own.
    */
   maxRuntimeMode: Schema.optional(RuntimeMode),
+  /** A Chat thread: conversation only, read-only tools, chat instructions instead of coding ones. */
+  conversationOnly: Schema.optional(Schema.Boolean),
 });
 export type ProviderAdapterV2RuntimePolicy = typeof ProviderAdapterV2RuntimePolicy.Type;
 

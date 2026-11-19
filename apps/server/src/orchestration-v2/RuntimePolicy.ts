@@ -4,6 +4,7 @@ import {
   ModelSelection,
   OrchestrationV2AppThread,
   ProjectId,
+  type ProviderDriverKind,
   ProviderInstanceId,
   RuntimeMode,
   ThreadId,
@@ -12,10 +13,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { T3_CODE_CHAT_MODE_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
+import * as ServerConfig from "../config.ts";
+import { chatFolderRoot } from "../project/ManagedProjectFolders.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 
@@ -99,6 +104,40 @@ function providerRuntimeMode(
     : "approval-required";
 }
 
+/**
+ * A Chat thread may read (attachments, say) but never write or run anything. Every adapter
+ * maps this never-approve read-only sandbox; adapters that only read `runtimeMode` get its
+ * most restrictive value.
+ */
+export const conversationOnlyRuntimePolicy = (
+  policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+): ProviderAdapter.ProviderAdapterV2RuntimePolicy =>
+  ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+    ...policy,
+    runtimeMode: "approval-required",
+    interactionMode: "default",
+    approvalPolicy: "never",
+    sandboxPolicy: {
+      type: "readOnly",
+      access: { type: "fullAccess" },
+      networkAccess: false,
+    },
+    conversationOnly: true,
+  });
+
+/** Claude and Codex carry the chat instructions in their system context; other agents get them inline. */
+export const conversationOnlyInlineNote = (input: {
+  readonly driver: ProviderDriverKind;
+  readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
+  readonly userText: string;
+}): string =>
+  input.runtimePolicy.conversationOnly === true &&
+  input.driver !== "claudeAgent" &&
+  input.driver !== "codex" &&
+  !input.userText.trimStart().startsWith("/")
+    ? T3_CODE_CHAT_MODE_INSTRUCTIONS
+    : "";
+
 const refuseAboveCeiling = (
   managedPolicy: ServerSettings.ServerSettingsService["Service"]["managedPolicy"],
   thread: OrchestrationV2AppThread,
@@ -151,6 +190,11 @@ export const layerFromProjectStore: Layer.Layer<
     // The same ceiling the orchestrator enforces, fixed for the server's life.
     const { managedPolicy } = yield* ServerSettings.ServerSettingsService;
     const maxRuntimeMode = managedPolicy?.limits?.maxRuntimeMode;
+    // Optional so tests without a server config need not provide one; such servers have no chats.
+    const chatRoot = Option.all([
+      yield* Effect.serviceOption(ServerConfig.ServerConfig),
+      yield* Effect.serviceOption(Path.Path),
+    ]).pipe(Option.map(([config, path]) => ({ path, root: chatFolderRoot(config.baseDir, path) })));
     return RuntimePolicyV2.of({
       resolve: Effect.fn("RuntimePolicyV2.resolve")(function* (input) {
         yield* refuseAboveCeiling(managedPolicy, input.thread);
@@ -159,37 +203,46 @@ export const layerFromProjectStore: Layer.Layer<
           instance === undefined
             ? undefined
             : (yield* instance.snapshot.getSnapshot).supportedRuntimeModes;
-        const cwd =
-          input.thread.worktreePath ??
-          (yield* projects.get(input.thread.projectId).pipe(
-            Effect.mapError(
-              (cause) =>
-                new RuntimePolicyResolveError({
-                  projectId: input.thread.projectId,
-                  providerInstanceId: input.modelSelection.instanceId,
-                  cause,
-                }),
-            ),
-            Effect.flatMap(
-              Option.match({
-                onNone: () =>
-                  Effect.fail(
-                    new RuntimePolicyResolveError({
-                      projectId: input.thread.projectId,
-                      providerInstanceId: input.modelSelection.instanceId,
-                      cause: "Project not found.",
-                    }),
-                  ),
-                onSome: (project) => Effect.succeed(project.workspaceRoot),
+        const runtimeMode = providerRuntimeMode(input.thread.runtimeMode, supportedRuntimeModes);
+        const policyFor = (cwd: string) =>
+          ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            runtimeMode,
+            interactionMode: input.thread.interactionMode,
+            cwd,
+            ...(maxRuntimeMode === undefined ? {} : { maxRuntimeMode }),
+          });
+        // Chat threads run in the chat folder itself, never in a worktree.
+        if (input.thread.worktreePath !== null) return policyFor(input.thread.worktreePath);
+        const project = yield* projects.get(input.thread.projectId).pipe(
+          Effect.mapError(
+            (cause) =>
+              new RuntimePolicyResolveError({
+                projectId: input.thread.projectId,
+                providerInstanceId: input.modelSelection.instanceId,
+                cause,
               }),
-            ),
-          ));
-        return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          runtimeMode: providerRuntimeMode(input.thread.runtimeMode, supportedRuntimeModes),
-          interactionMode: input.thread.interactionMode,
-          cwd,
-          ...(maxRuntimeMode === undefined ? {} : { maxRuntimeMode }),
-        });
+          ),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new RuntimePolicyResolveError({
+                    projectId: input.thread.projectId,
+                    providerInstanceId: input.modelSelection.instanceId,
+                    cause: "Project not found.",
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        );
+        const policy = policyFor(project.workspaceRoot);
+        return Option.exists(
+          chatRoot,
+          ({ path, root }) => path.resolve(project.workspaceRoot) === root,
+        )
+          ? conversationOnlyRuntimePolicy(policy)
+          : policy;
       }),
     });
   }),

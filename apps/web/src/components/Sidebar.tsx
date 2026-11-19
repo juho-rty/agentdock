@@ -72,7 +72,9 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
+  HammerIcon,
   ListFilterIcon,
+  MessageCircleIcon,
   PlusIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -130,6 +132,16 @@ import {
   useThreadActions,
 } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useChatProject } from "../hooks/useChatProject";
+import {
+  chatProjectKeys,
+  filterThreadsForMode,
+  isChatThread,
+  SIDEBAR_THREAD_MODE_STORAGE_KEY,
+  type SidebarThreadMode,
+  SidebarThreadModeSchema,
+} from "../sidebarThreadMode";
+import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { useOrderWhileOpen } from "../hooks/useOrderWhileOpen";
 import { useProjectPin } from "../hooks/useProjectGroupUpdate";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
@@ -842,6 +854,7 @@ function useSidebarLookups() {
   ];
   return {
     projects,
+    chatKeys: chatProjectKeys(projects),
     serverConfigs,
     projectGroups,
     environmentLabelById,
@@ -911,6 +924,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const messages = useMessages();
   const {
     projects,
+    chatKeys,
     serverConfigs,
     projectGroups,
     environmentLabelById,
@@ -993,6 +1007,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const newThreadContext = useHandleNewThread();
   // Row callbacks capture only the handler; the rest of the context changes with the route.
   const { handleNewThread } = newThreadContext;
+  const chat = useChatProject();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
@@ -1110,10 +1125,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
   const threads = useQuietThreadShells();
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
+  const [threadMode, setThreadMode] = useLocalStorage<SidebarThreadMode, SidebarThreadMode>(
+    SIDEBAR_THREAD_MODE_STORAGE_KEY,
+    "agent",
+    SidebarThreadModeSchema,
+  );
+  const isChatMode = threadMode === "chat";
+  const modeThreads = filterThreadsForMode(threads, threadMode, chatKeys);
   const listedThreads =
     promotingDraftThreadKeys.length === 0
-      ? threads
-      : threads.map((thread) =>
+      ? modeThreads
+      : modeThreads.map((thread) =>
           promotingDraftThreadKeys.includes(threadShellKey(thread))
             ? asLaunchingThread(thread)
             : thread,
@@ -1122,6 +1144,25 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeThreadRef === null
       ? null
       : scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, threads));
+  const routeModeSource =
+    (routeRowThreadKey === null
+      ? null
+      : threads.find((candidate) => threadShellKey(candidate) === routeRowThreadKey)) ??
+    routeDraftThread;
+  const routeMode: SidebarThreadMode | null = routeModeSource
+    ? isChatThread(routeModeSource, chatKeys)
+      ? "chat"
+      : "agent"
+    : null;
+  const routeModeKey = routeRowThreadKey ?? routeDraftThread?.threadId ?? null;
+  const appliedRouteModeKeyRef = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opening a thread of the other kind switches the persisted Agent/Chat tab once per route, so the open row stays listed
+  useEffect(() => {
+    if (routeModeKey === null || routeMode === null) return;
+    if (appliedRouteModeKeyRef.current === routeModeKey) return;
+    appliedRouteModeKeyRef.current = routeModeKey;
+    setThreadMode(routeMode);
+  }, [routeMode, routeModeKey, setThreadMode]);
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   // The open draft's first send names its thread in place; a finalized draft reached by
   // navigation resolves through its redirect instead, and still reveals.
@@ -1140,7 +1181,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     delegatedUnderParent,
     findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
   });
-  const projectScopeKeys = revealWidensScope ? [] : chosenProjectScopeKeys;
+  const projectScopeKeys = revealWidensScope || isChatMode ? [] : chosenProjectScopeKeys;
   const projectScopeKey = projectScopeKeys.length === 0 ? null : projectScopeKeys.join("\n");
   const toggleProjectScopeKey = (key: string) =>
     setProjectScopeKeys(
@@ -1190,9 +1231,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     matches: (item, query) =>
       projectScopeFilter.contains(item, query, (candidate) => candidate.label),
   });
-  const scopedProjectGroups = revealWidensScope ? [] : chosenProjectGroups;
+  const scopedProjectGroups = revealWidensScope || isChatMode ? [] : chosenProjectGroups;
   const scopedProjectRefs = scopedProjectGroups.flatMap((project) => project.memberProjectRefs);
-  const scopedProjectKeys = revealWidensScope ? null : chosenScopeProjectKeys;
+  const scopedProjectKeys = revealWidensScope || isChatMode ? null : chosenScopeProjectKeys;
   const threadSearch = useThreadSearch(
     connectedEnvironmentIds,
     threadSearchQuery,
@@ -1352,12 +1393,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     threads: listedThreads,
     delegatedUnderParent,
     routeRowThreadKey,
-    folderGroups: boringSidebarEnabled
-      ? scopedProjectGroups.length === 0
-        ? // An archived project keeps a folder for its active threads, below the rest.
-          [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
-        : scopedProjectGroups
-      : null,
+    folderGroups:
+      boringSidebarEnabled && !isChatMode
+        ? scopedProjectGroups.length === 0
+          ? // An archived project keeps a folder for its active threads, below the rest.
+            [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
+          : scopedProjectGroups
+        : null,
     keepEmptyFolders: (group) =>
       scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
   });
@@ -2946,6 +2988,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
 
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
+    if (isChatMode) {
+      const environmentId = chat.chatEnvironmentId(
+        newThreadContext.activeThread?.environmentId ??
+          newThreadContext.activeDraftThread?.environmentId ??
+          null,
+      );
+      if (environmentId !== null) {
+        if (isMobile) setOpenMobile(false);
+        void chat.startChatDraft(environmentId);
+        return;
+      }
+    }
     if (
       shouldCreateNewThreadInCurrentProject(
         event?.shiftKey ?? false,
@@ -2984,7 +3038,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              hasProjects={projectGroups.length > 0}
+              hasProjects={projectGroups.length > 0 && !isChatMode}
               projectScope={
                 <Combobox
                   items={projectScopeItems}
@@ -3196,7 +3250,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
-              newThreadDisabled={projects.length === 0}
+              newThreadDisabled={projects.length === 0 && !isChatMode}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
               showNewThreadInProjectHint={
@@ -3218,6 +3272,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
             />
+            <ToggleGroup
+              aria-label={gt("Thread kind")}
+              className="mt-1.5 w-full *:flex-1"
+              value={[threadMode]}
+              onValueChange={(next) => {
+                const value = next[0];
+                if (value === "agent" || value === "chat") setThreadMode(value);
+              }}
+            >
+              <Toggle value="agent">
+                <HammerIcon />
+                <T>Agent</T>
+              </Toggle>
+              <Toggle value="chat">
+                <MessageCircleIcon />
+                <T>Chat</T>
+              </Toggle>
+            </ToggleGroup>
           </SidebarGroup>
         }
       >

@@ -70,6 +70,9 @@ export class ScratchProjectError extends Schema.TaggedError<ScratchProjectError>
 export const scratchFolderRoot = (baseDir: string, path: Path.Path) =>
   path.resolve(baseDir, "scratch");
 
+/** Chat threads (conversation only, no tools) all live in this one managed project. */
+export const chatFolderRoot = (baseDir: string, path: Path.Path) => path.resolve(baseDir, "chats");
+
 export type ScratchError = ScratchUnavailableError | ScratchFolderError | ScratchProjectError;
 
 // The spawner checks cwd before spawning, so NotFound from spawn itself means a missing executable.
@@ -114,6 +117,10 @@ export class ManagedProjectFolders extends Context.Service<
     readonly scratchRoot: Effect.Effect<Option.Option<string>>;
     readonly ensureScratchProject: Effect.Effect<{ readonly projectId: ProjectId }, ScratchError>;
     readonly isScratchProject: (projectId: ProjectId) => Effect.Effect<boolean>;
+    /** Available exactly when the scratch project is. */
+    readonly chatRoot: Effect.Effect<Option.Option<string>>;
+    readonly ensureChatProject: Effect.Effect<{ readonly projectId: ProjectId }, ScratchError>;
+    readonly isChatProject: (projectId: ProjectId) => Effect.Effect<boolean>;
     readonly folderForThread: (input: {
       readonly projectId: ProjectId;
       readonly threadId: ThreadId;
@@ -305,19 +312,23 @@ const make = Effect.gen(function* () {
       .makeDirectory(folder, { recursive: true })
       .pipe(Effect.mapError((cause) => new ScratchFolderError({ folder, cause })));
 
-  const ensureScratchProject: ManagedProjectFolders["Service"]["ensureScratchProject"] = Effect.gen(
-    function* () {
-      const probedRoot = yield* scratchProbe.pipe(Effect.flatMap(Effect.fromResult));
-      yield* makeScratchFolder(probedRoot);
-      const workspaceRoot = yield* scratchProjectRoot(probedRoot);
+  const ensureManagedProject = Effect.fn("ManagedProjectFolders.ensureManagedProject")(
+    function* (input: {
+      readonly probedRoot: string;
+      readonly kind: "scratch" | "chat";
+      readonly title: string;
+      readonly iconName: string;
+    }) {
+      yield* makeScratchFolder(input.probedRoot);
+      const workspaceRoot = yield* scratchProjectRoot(input.probedRoot);
       const id = yield* random
         .uuidV4()
         .pipe(Effect.mapError((cause) => new ScratchProjectError({ workspaceRoot, cause })));
       const bootstrapped = yield* projects
         .bootstrap({
-          commandId: CommandId.make(`scratch-project:${id}`),
+          commandId: CommandId.make(`${input.kind}-project:${id}`),
           projectId: ProjectId.make(id),
-          title: "No project",
+          title: input.title,
           workspaceRoot,
         })
         .pipe(
@@ -335,15 +346,49 @@ const make = Effect.gen(function* () {
         // Set once at create, so a user's own icon choice is never overwritten.
         yield* projects
           .update({
-            commandId: CommandId.make(`scratch-project-icon:${id}`),
+            commandId: CommandId.make(`${input.kind}-project-icon:${id}`),
             projectId: bootstrapped.project.id,
-            projectIcon: { kind: "lucide", name: "message-square-dashed", color: "gray" },
+            projectIcon: { kind: "lucide", name: input.iconName, color: "gray" },
           })
           .pipe(Effect.mapError((cause) => new ScratchProjectError({ workspaceRoot, cause })));
       }
       return { projectId: bootstrapped.project.id };
     },
   );
+
+  const ensureScratchProject: ManagedProjectFolders["Service"]["ensureScratchProject"] =
+    scratchProbe.pipe(
+      Effect.flatMap(Effect.fromResult),
+      Effect.flatMap((probedRoot) =>
+        ensureManagedProject({
+          probedRoot,
+          kind: "scratch",
+          title: "No project",
+          iconName: "message-square-dashed",
+        }),
+      ),
+    );
+
+  const chatRoot = scratchProbe.pipe(
+    Effect.flatMap((probed) =>
+      Result.isSuccess(probed)
+        ? scratchProjectRoot(chatFolderRoot(config.baseDir, path)).pipe(Effect.asSome)
+        : Effect.succeedNone,
+    ),
+  );
+
+  const ensureChatProject: ManagedProjectFolders["Service"]["ensureChatProject"] =
+    scratchProbe.pipe(
+      Effect.flatMap(Effect.fromResult),
+      Effect.flatMap(() =>
+        ensureManagedProject({
+          probedRoot: chatFolderRoot(config.baseDir, path),
+          kind: "chat",
+          title: "Chats",
+          iconName: "message-circle",
+        }),
+      ),
+    );
 
   const isScratchRoot = (projectId: ProjectId, root: string) =>
     projects.getById(projectId).pipe(
@@ -355,6 +400,16 @@ const make = Effect.gen(function* () {
 
   const isScratchProject: ManagedProjectFolders["Service"]["isScratchProject"] = (projectId) =>
     scratchRoot.pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(false),
+          onSome: (root) => isScratchRoot(projectId, root),
+        }),
+      ),
+    );
+
+  const isChatProject: ManagedProjectFolders["Service"]["isChatProject"] = (projectId) =>
+    chatRoot.pipe(
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.succeed(false),
@@ -512,6 +567,9 @@ const make = Effect.gen(function* () {
     scratchRoot,
     ensureScratchProject,
     isScratchProject,
+    chatRoot,
+    ensureChatProject,
+    isChatProject,
     folderForThread,
     namedProjectsRoot,
     createNamedProject,

@@ -25,6 +25,8 @@ import { formatSubagentDisplayTitle } from "./subagentDisplay.ts";
 export interface EnvironmentProject extends OrchestrationProjectShell {
   readonly environmentId: EnvironmentId;
   readonly isScratch?: true;
+  /** The Chats project: its threads are conversations, not coding tasks. */
+  readonly isChat?: true;
 }
 
 /**

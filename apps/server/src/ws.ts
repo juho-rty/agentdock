@@ -1842,6 +1842,7 @@ export const layerWsRpc = (
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
         const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
+        const chatWorkspaceRoot = yield* managedFolders.chatRoot;
         const lastEventLoopStall = yield* eventLoopMonitor.latestNoticeableStall;
         const discovery = yield* resolveOpenDiscoveryForConfig({
           editors: externalLauncher.resolveAvailableEditors(),
@@ -1910,6 +1911,10 @@ export const layerWsRpc = (
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
             onSome: (root) => ({ scratchWorkspaceRoot: root }),
+          }),
+          ...Option.match(chatWorkspaceRoot, {
+            onNone: () => ({}),
+            onSome: (root) => ({ chatWorkspaceRoot: root }),
           }),
           newProjectsRoot: managedFolders.namedProjectsRoot,
           ...(lastEventLoopStall === undefined ? {} : { lastEventLoopStall }),
@@ -2921,6 +2926,12 @@ export const layerWsRpc = (
           }),
         [WS_METHODS.projectsEnsureScratch]: () =>
           managedFolders.ensureScratchProject.pipe(
+            Effect.mapError(
+              (cause) => new OrchestrationDispatchCommandError({ message: cause.message, cause }),
+            ),
+          ),
+        [WS_METHODS.projectsEnsureChat]: () =>
+          managedFolders.ensureChatProject.pipe(
             Effect.mapError(
               (cause) => new OrchestrationDispatchCommandError({ message: cause.message, cause }),
             ),

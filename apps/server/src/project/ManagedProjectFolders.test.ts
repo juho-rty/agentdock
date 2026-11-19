@@ -247,6 +247,29 @@ it.effect("creates one Scratch project, even for concurrent first requests", () 
   ),
 );
 
+it.effect("keeps chats in their own Chats project beside No project", () =>
+  withScratch(() =>
+    Effect.gen(function* () {
+      const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
+      const projects = yield* ProjectService.ProjectService;
+      const scratch = yield* folders.ensureScratchProject;
+      const chat = yield* folders.ensureChatProject;
+      assert.notEqual(chat.projectId, scratch.projectId);
+      assert.equal((yield* folders.ensureChatProject).projectId, chat.projectId);
+      assert.isTrue(yield* folders.isChatProject(chat.projectId));
+      assert.isFalse(yield* folders.isChatProject(scratch.projectId));
+      assert.isFalse(yield* folders.isScratchProject(chat.projectId));
+
+      const chatRoot = Option.getOrThrow(yield* folders.chatRoot);
+      const project = (yield* projects.snapshot).projects.find(
+        (candidate) => candidate.id === chat.projectId,
+      );
+      assert.equal(project?.workspaceRoot, chatRoot);
+      assert.equal(project?.title, "Chats");
+    }),
+  ),
+);
+
 it.effect("recreates the Scratch folder after it is deleted", () =>
   withScratch(() =>
     Effect.gen(function* () {

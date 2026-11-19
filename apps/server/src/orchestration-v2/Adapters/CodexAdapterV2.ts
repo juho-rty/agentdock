@@ -112,6 +112,7 @@ import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { buildCodexAdditionalContext } from "../../provider/CodexDeveloperInstructions.ts";
+import { T3_CODE_CHAT_MODE_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import {
   describeMcpElicitation,
   toMcpElicitationResponse,
@@ -856,10 +857,14 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
             },
           )
         : undefined;
+    const chatContext =
+      input.runtimePolicy.conversationOnly === true
+        ? { t3_code_chat: { kind: "application" as const, value: T3_CODE_CHAT_MODE_INSTRUCTIONS } }
+        : undefined;
     const additionalContext =
-      t3Context === undefined && Object.keys(appContext).length === 0
+      t3Context === undefined && chatContext === undefined && Object.keys(appContext).length === 0
         ? undefined
-        : { ...t3Context, ...appContext };
+        : { ...t3Context, ...chatContext, ...appContext };
     return yield* decodeCodexTurnStartParams({
       threadId: input.nativeThreadId,
       input: input.codexInput,

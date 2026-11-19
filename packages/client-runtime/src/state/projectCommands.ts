@@ -123,6 +123,24 @@ export function createProjectEnvironmentAtoms<R, E>(
             : fileMetadata.rememberFile(input.cwd, result, isCurrent),
       ),
   });
+  // Drafts key off a project's stored path, so opening a managed project waits for the store.
+  const awaitStoredProject = (
+    registry: AtomRegistry.AtomRegistry,
+    environmentId: EnvironmentId,
+    projectId: ProjectId,
+  ) =>
+    AtomRegistry.toStream(registry, options.projectAtom({ environmentId, projectId })).pipe(
+      Stream.filter(Predicate.isNotNull),
+      Stream.runHead,
+      Effect.timeoutOption("10 seconds"),
+      Effect.map(Option.flatten),
+      Effect.flatMap(
+        Option.match({
+          onSome: Effect.succeed,
+          onNone: () => Effect.fail(new ScratchProjectNotLoadedError({ projectId })),
+        }),
+      ),
+    );
   const projectConcurrency = {
     mode: "serial" as const,
     key: ({ environmentId, input }: { environmentId: string; input: { projectId: string } }) =>
@@ -201,20 +219,21 @@ export function createProjectEnvironmentAtoms<R, E>(
         environmentId,
       ) =>
         request(WS_METHODS.projectsEnsureScratch, input).pipe(
-          Effect.flatMap(({ projectId }) =>
-            AtomRegistry.toStream(registry, options.projectAtom({ environmentId, projectId })).pipe(
-              Stream.filter(Predicate.isNotNull),
-              Stream.runHead,
-              Effect.timeoutOption("10 seconds"),
-              Effect.map(Option.flatten),
-              Effect.flatMap(
-                Option.match({
-                  onSome: Effect.succeed,
-                  onNone: () => Effect.fail(new ScratchProjectNotLoadedError({ projectId })),
-                }),
-              ),
-            ),
-          ),
+          Effect.flatMap(({ projectId }) => awaitStoredProject(registry, environmentId, projectId)),
+        ),
+      scheduler: projectScheduler,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    // The same for the Chats project, which holds every Chat thread.
+    openChat: createEnvironmentCommand(runtime, {
+      label: "environment-data:projects:open-chat",
+      execute: (
+        input: EnvironmentRpcInput<typeof WS_METHODS.projectsEnsureChat>,
+        registry,
+        environmentId,
+      ) =>
+        request(WS_METHODS.projectsEnsureChat, input).pipe(
+          Effect.flatMap(({ projectId }) => awaitStoredProject(registry, environmentId, projectId)),
         ),
       scheduler: projectScheduler,
       concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
