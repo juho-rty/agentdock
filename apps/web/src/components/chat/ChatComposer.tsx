@@ -1032,6 +1032,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
   const isSoftwareKeyboardOpen = useSoftwareKeyboardOpen();
+  // Keyboard geometry is not reported everywhere (an installed iOS web app withholds it),
+  // so a touch-first device always gets Return as a line break and sends with the button.
+  const isTouchPrimary = useMediaQuery("(hover: none) and (pointer: coarse)");
+  const returnInsertsNewline = isSoftwareKeyboardOpen || isTouchPrimary;
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
   const [providerInputSubmissionError, setProviderInputSubmissionError] = useState<string | null>(
@@ -2268,7 +2272,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         event,
         keybindings,
         context: getShortcutContext(event.target),
-        isSoftwareKeyboardOpen,
+        isSoftwareKeyboardOpen: returnInsertsNewline,
         isDraftThread: routeKind === "draft",
         isRunning: phase === "running" || phase === "connecting",
         sendShortcut: settings.sendShortcut,
@@ -2396,7 +2400,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       phase,
       canSteer,
       followUpBehavior,
-      isSoftwareKeyboardOpen,
+      isSoftwareKeyboardOpen: returnInsertsNewline,
       isLiteralPendingAnswer,
       pendingUserInputs,
       promptHistoryEntries,

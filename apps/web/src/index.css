@@ -2890,6 +2890,46 @@ code {
     --liquid-nav-shift: -28px;
   }
 
+  /* Tab ↔ tab: the pages slide a full width past the tab bar, which holds still. */
+  html:active-view-transition-type(liquid-tab-next),
+  html:active-view-transition-type(liquid-tab-previous) {
+    &::view-transition-old(root) {
+      animation: liquid-tab-out 340ms var(--liquid-spring-smooth) both;
+    }
+
+    &::view-transition-new(root) {
+      animation: liquid-tab-in 340ms var(--liquid-spring-smooth) both;
+    }
+
+    &::view-transition-group(mobile-tab-bar) {
+      z-index: 1;
+    }
+
+    &::view-transition-old(mobile-tab-bar),
+    &::view-transition-new(mobile-tab-bar) {
+      animation-duration: 200ms;
+    }
+  }
+
+  html:active-view-transition-type(liquid-tab-next) {
+    --liquid-tab-shift: 100%;
+  }
+
+  html:active-view-transition-type(liquid-tab-previous) {
+    --liquid-tab-shift: -100%;
+  }
+
+  /* Popups stay readable over the list behind them even where the blur is not drawn. */
+  .dropdown-glass {
+    background: color-mix(in srgb, var(--popover) 94%, transparent);
+  }
+
+  /* No soft fade under the top bar: on a phone it reads as text smearing into the header. */
+  .topbar-scroll-fade {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     [data-slot="menu-popup"],
     [data-slot="menu-sub-content"],
@@ -2904,7 +2944,9 @@ code {
     }
 
     html:active-view-transition-type(liquid-forward),
-    html:active-view-transition-type(liquid-back) {
+    html:active-view-transition-type(liquid-back),
+    html:active-view-transition-type(liquid-tab-next),
+    html:active-view-transition-type(liquid-tab-previous) {
       &::view-transition-old(root),
       &::view-transition-new(root) {
         animation: none;
@@ -2917,6 +2959,18 @@ code {
       --glass-blur: 0px !important;
       --glass-opacity: 100% !important;
     }
+  }
+}
+
+@keyframes liquid-tab-out {
+  to {
+    translate: calc(var(--liquid-tab-shift) * -1) 0;
+  }
+}
+
+@keyframes liquid-tab-in {
+  from {
+    translate: var(--liquid-tab-shift) 0;
   }
 }
 

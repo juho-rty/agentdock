@@ -495,7 +495,7 @@ export function AppSidebarLayout({
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
         // A page under the phone tab bar ends above it; the home list scrolls under it instead.
-        className="h-dvh! min-h-0! has-[[data-mobile-tab-bar=reserve]]:[&_[data-slot=sidebar-inset]]:h-[calc(100dvh-4.5rem-env(safe-area-inset-bottom))]!"
+        className="h-dvh! min-h-0! has-[[data-mobile-tab-bar=reserve]]:[&_[data-slot=sidebar-inset]]:h-[calc(100dvh-4rem-env(safe-area-inset-bottom))]!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
         style={sidebarProviderStyle}

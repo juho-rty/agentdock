@@ -37,6 +37,7 @@ import { resolveEventKeys } from "@t3tools/shared/keybindings";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { T, useGT, useMessages } from "gt-react";
 
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
@@ -130,7 +131,16 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   return <Icon className="size-4 shrink-0 text-(--sidebar-icon-color)" />;
 }
 
-export function SettingsSidebarNav({ pathname }: { pathname: string }) {
+export function SettingsSidebarNav(props: {
+  pathname: string;
+  /** Below md: the nav covers the page with its search and labelled sections. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+}) {
+  const { pathname } = props;
+  const [ownExpanded, setOwnExpanded] = useState(false);
+  const compactSearchOpen = props.expanded ?? ownExpanded;
+  const setCompactSearchOpen = props.onExpandedChange ?? setOwnExpanded;
   const gt = useGT();
   const m = useMessages();
   const navArea = workspaceAreaProps("settings-nav", 0, gt("Settings sections"));
@@ -139,8 +149,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const activePath = SETTINGS_DETAIL_PAGE_PARENTS[pathname] ?? pathname;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  // Below md the nav is an icon rail; searching expands it over the page.
-  const [compactSearchOpen, setCompactSearchOpen] = useState(false);
+  // Below md the nav is an icon rail, and on a phone it is hidden behind the header's
+  // sections button; expanding it lays the full list over the page.
+  const isPhone = useMediaQuery("max-sm");
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchableItems = useAvailableSettingsSearchItems();
   const results = searchSettings(query, searchableItems, m);
@@ -190,14 +201,16 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setCompactSearchOpen]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the search input DOM node after the compact search opens
   useEffect(() => {
-    if (compactSearchOpen) searchInputRef.current?.focus();
-  }, [compactSearchOpen]);
+    // A phone opens the list to pick a section; focusing would raise the keyboard over it.
+    if (compactSearchOpen && !isPhone) searchInputRef.current?.focus();
+  }, [compactSearchOpen, isPhone]);
 
   const handleSectionClick = (to: SettingsPath) => {
+    setCompactSearchOpen(false);
     void navigate({
       to,
       hash: "",
@@ -260,8 +273,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       role="navigation"
       className={cn(
         "flex w-60 shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground max-md:w-14",
-        compactSearchOpen &&
-          "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full",
+        compactSearchOpen
+          ? "max-md:absolute max-md:inset-y-0 max-md:start-0 max-md:z-10 max-md:w-full"
+          : "max-sm:hidden",
       )}
     >
       <SidebarContent className="overflow-x-hidden">
@@ -287,7 +301,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 onKeyDown={handleSearchKeyDown}
                 onFocus={() => setCompactSearchOpen(true)}
                 onBlur={() => {
-                  if (!isSearching) setCompactSearchOpen(false);
+                  // On a phone the list closes by its button or a choice; closing on blur
+                  // would take the tapped row away before the tap lands.
+                  if (!isSearching && !isPhone) setCompactSearchOpen(false);
                 }}
                 placeholder={gt("Search")}
                 aria-label={gt("Search settings")}
@@ -317,7 +333,21 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   <XIcon className="size-3" />
                 </Button>
               ) : (
-                <Kbd>/</Kbd>
+                <>
+                  <Kbd className="max-sm:hidden">/</Kbd>
+                  {compactSearchOpen && isPhone ? (
+                    <Button
+                      type="button"
+                      size="icon-micro"
+                      variant="ghost-muted"
+                      className="shrink-0"
+                      aria-label={gt("Close")}
+                      onClick={() => setCompactSearchOpen(false)}
+                    >
+                      <XIcon className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </>
               )}
             </div>
             {isSearching && results.length === 0 ? (

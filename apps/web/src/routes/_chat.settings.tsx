@@ -2,7 +2,7 @@ import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { T, useGT, useMessages, Var } from "gt-react";
-import { RotateCcwIcon } from "lucide-react";
+import { MenuIcon, RotateCcwIcon } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 
@@ -131,13 +131,28 @@ function SettingsContentLayout() {
       ? environment?.environmentId
       : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
+  const [navExpanded, setNavExpanded] = useState(false);
 
   return (
     <AppRouteModal label={gt("Settings")}>
       <div className="relative flex min-h-0 flex-1">
-        <SettingsSidebarNav pathname={location.pathname} />
+        <SettingsSidebarNav
+          pathname={location.pathname}
+          expanded={navExpanded}
+          onExpandedChange={setNavExpanded}
+        />
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
+          <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2 max-sm:gap-1.5 max-sm:ps-2">
+            {/* A phone has no room for the section rail, so the header opens the list. */}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="shrink-0 sm:hidden"
+              aria-label={gt("Settings sections")}
+              onClick={() => setNavExpanded(true)}
+            >
+              <MenuIcon />
+            </Button>
             <SettingsBreadcrumb pathname={location.pathname} />
             <div className="ms-auto flex shrink-0 items-center gap-1">
               {location.pathname === "/settings/general" ? (

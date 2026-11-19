@@ -25,6 +25,9 @@ import {
 } from "./MobileHome.logic";
 import { useMobileHomeFilters } from "./useMobileHomeFilters";
 
+const TAB_NEXT_VIEW_TRANSITION = { types: ["liquid-tab-next"] };
+const TAB_PREVIOUS_VIEW_TRANSITION = { types: ["liquid-tab-previous"] };
+
 /** Starts a draft in the home's filtered project, or the most recent one. */
 function useMobileNewThread() {
   const projects = useProjects();
@@ -58,19 +61,24 @@ function TabLink(props: {
   readonly label: string;
   readonly active: boolean;
   readonly icon: LucideIcon;
+  /** Which way the page slides in: `next` for a tab to the right of the current one. */
+  readonly direction: "next" | "previous";
 }) {
   const Icon = props.icon;
   return (
     <Link
       to={props.to}
+      viewTransition={
+        props.direction === "next" ? TAB_NEXT_VIEW_TRANSITION : TAB_PREVIOUS_VIEW_TRANSITION
+      }
       aria-label={props.label}
       aria-current={props.active ? "page" : undefined}
       className={cn(
-        "liquid-press relative flex h-11 min-w-0 flex-1 items-center justify-center rounded-full text-muted-foreground outline-none [--liquid-press-scale:0.9] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "liquid-press relative flex h-10 min-w-0 flex-1 items-center justify-center rounded-full text-muted-foreground outline-none [--liquid-press-scale:0.9] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         props.active && "text-foreground",
       )}
     >
-      <Icon aria-hidden className="size-5.5" strokeWidth={props.active ? 2.25 : 1.9} />
+      <Icon aria-hidden className="size-5" strokeWidth={props.active ? 2.25 : 1.9} />
     </Link>
   );
 }
@@ -89,23 +97,28 @@ export function MobileTabBarView(props: {
     ? ["threads", "pullRequests", "usage", "settings"]
     : ["threads", "usage", "settings"];
   const activeIndex = props.activeTab === null ? -1 : tabs.indexOf(props.activeTab);
+  const directionOf = (tab: MobileTab) =>
+    tabs.indexOf(tab) > activeIndex ? ("next" as const) : ("previous" as const);
   return (
     <nav
       aria-label={gt("Main tabs")}
       data-mobile-tab-bar={props.reserveSpace ? "reserve" : "overlay"}
+      // Named so the bar holds still while the pages slide past it between tabs.
+      style={{ viewTransitionName: "mobile-tab-bar" }}
       className={cn(
-        "pointer-events-none shrink-0 pb-safe [-webkit-app-region:no-drag]",
-        props.variant === "floating" ? "fixed inset-x-0 bottom-0 z-40" : "pt-1.5",
+        "pointer-events-none shrink-0 [-webkit-app-region:no-drag]",
+        // A docked bar sits in a page that already ends above the home indicator.
+        props.variant === "floating" ? "fixed inset-x-0 bottom-0 z-40 pb-safe" : "pt-1.5",
       )}
     >
       <div className="flex items-center gap-3 px-4 pb-2.5">
-        <div className="liquid-glass pointer-events-auto relative flex h-14 min-w-0 flex-1 items-center gap-1 rounded-full px-1.5">
+        <div className="liquid-glass pointer-events-auto relative flex h-12 min-w-0 flex-1 items-center gap-1 rounded-full px-1">
           {activeIndex < 0 ? null : (
             <span
               aria-hidden
-              className="liquid-tab-indicator pointer-events-none absolute inset-y-0 left-1.5 my-auto h-11 rounded-full bg-foreground/[0.08]"
+              className="liquid-tab-indicator pointer-events-none absolute inset-y-0 left-1 my-auto h-10 rounded-full bg-foreground/[0.08]"
               style={{
-                width: `calc((100% - 0.75rem - ${tabs.length - 1} * 0.25rem) / ${tabs.length})`,
+                width: `calc((100% - 0.5rem - ${tabs.length - 1} * 0.25rem) / ${tabs.length})`,
                 translate: `calc(${activeIndex} * (100% + 0.25rem)) 0`,
               }}
             />
@@ -115,6 +128,7 @@ export function MobileTabBarView(props: {
             label={gt("Threads")}
             active={props.activeTab === "threads"}
             icon={MessagesSquareIcon}
+            direction={directionOf("threads")}
           />
           {props.pullRequestsSupported ? (
             <TabLink
@@ -122,6 +136,7 @@ export function MobileTabBarView(props: {
               label={gt("Pull requests")}
               active={props.activeTab === "pullRequests"}
               icon={PullRequestGlyph.pullRequest}
+              direction={directionOf("pullRequests")}
             />
           ) : null}
           <TabLink
@@ -129,21 +144,23 @@ export function MobileTabBarView(props: {
             label={gt("Usage")}
             active={props.activeTab === "usage"}
             icon={ChartColumnIcon}
+            direction={directionOf("usage")}
           />
           <TabLink
             to="/settings"
             label={gt("Settings")}
             active={props.activeTab === "settings"}
             icon={SettingsIcon}
+            direction={directionOf("settings")}
           />
         </div>
         <button
           type="button"
           aria-label={gt("New thread")}
           onClick={props.onNewThread}
-          className="liquid-glass liquid-press pointer-events-auto flex size-14 shrink-0 items-center justify-center rounded-full text-foreground outline-none [--liquid-press-scale:0.92] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          className="liquid-glass liquid-press pointer-events-auto flex size-12 shrink-0 items-center justify-center rounded-full text-foreground outline-none [--liquid-press-scale:0.92] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
-          <SquarePenIcon aria-hidden className="size-5.5" />
+          <SquarePenIcon aria-hidden className="size-5" />
         </button>
       </div>
     </nav>
