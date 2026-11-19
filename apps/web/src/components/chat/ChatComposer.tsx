@@ -1,3 +1,4 @@
+import { stripInlineContextReferences } from "~/lib/composerContextReferences";
 import { copySnapshot } from "./copySnapshot";
 import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
@@ -2849,7 +2850,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       event.stopPropagation();
       if (folders.length > 0) addComposerFoldersStable(folders);
       if (files.length > 0) {
-        void addComposerAttachments(files, { skipImageInlineChip: bypassAutoAttachment });
+        // An empty prompt sends pasted images to the media row above the
+        // editor; put the caret back in the editor, below them, to keep typing.
+        const caretBelowMedia = stripInlineContextReferences(promptRef.current).trim() === "";
+        void addComposerAttachments(files, { skipImageInlineChip: bypassAutoAttachment }).then(
+          (added) => {
+            if (added && caretBelowMedia) composerEditorRef.current?.focusAtEnd();
+          },
+        );
       }
       return;
     }

@@ -2812,6 +2812,20 @@ code {
 
 @media (max-width: 767px) {
   /*
+   * iOS draws its own blurred scroll edge under the status bar unless a fixed,
+   * opaque element covers it; this solid strip keeps the top edge crisp.
+   */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto;
+    height: env(safe-area-inset-top);
+    background: var(--background);
+    z-index: 2147483647;
+    pointer-events: none;
+  }
+
+  /*
    * A blur is redrawn every frame anything moves under it, and its cost grows
    * with the radius, so phone glass stays light enough to scroll at 120Hz.
    */
