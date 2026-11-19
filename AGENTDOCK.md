@@ -104,4 +104,6 @@ later, first move the old `~/.agentdock` aside, then change `.agentdock-next` in
 - Name and IDs: `apps/desktop/src/app/DesktopEnvironment.ts`, `scripts/build-desktop-artifact.ts`
 - Data folder: `apps/desktop/src/app/DesktopStatePaths.ts`, `apps/server/src/os-jank.ts`
 - Icons: `assets/agentdock/` (copied over `assets/prod`, `assets/nightly`, `apps/web/public`)
+- T3 Code import: `apps/server/src/persistence/importT3CodeData.ts`. On first start the server copies the
+  threads and projects of `~/.t3` into AgentDock once; delete `userdata/t3-code-import.json` to run it again.
 - UI: `apps/web`, server: `apps/server`

@@ -10,6 +10,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { hasPendingMigrations, runMigrations } from "./Migrations.ts";
 import { initializeV2Database } from "./initializeV2Database.ts";
+import { importT3CodeData } from "./importT3CodeData.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerOwnership from "../serverOwnership.ts";
 
@@ -150,7 +151,10 @@ const makeLayerConfig = <E, R>(
     }),
   );
 
-export const layerConfig = makeLayerConfig(layerFromPath);
+// AgentDock fork: the server, not the CLI, also takes in a T3 Code install's threads once.
+export const layerConfig = makeLayerConfig(
+  makeLayerFromPath(() => makeLayerSetup(runMigrations().pipe(Effect.andThen(importT3CodeData())))),
+);
 
 /** For CLI commands: pending migrations run only while no server owns the T3 home. */
 export const layerCliConfig = makeLayerConfig(
