@@ -283,7 +283,7 @@ function bootstrapTitlePlugin(): Plugin {
         hostedAppChannel: configuredHostedAppChannel,
         development,
       });
-      const title = formatAppDisplayName({ baseName: "Agent dock", stageLabel });
+      const title = formatAppDisplayName({ baseName: "AgentDock", stageLabel });
       return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
     },
   };

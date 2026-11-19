@@ -1,13 +1,13 @@
-# Agent dock
+# AgentDock
 
-Agent dock is a fork of [T3 Code](https://github.com/pingdotgg/t3code) (MIT).
+AgentDock is a fork of [T3 Code](https://github.com/pingdotgg/t3code) (MIT).
 It installs next to the official T3 Code without touching it:
 
-|                  | T3 Code              | Agent dock              |
+|                  | T3 Code              | AgentDock               |
 | ---------------- | -------------------- | ----------------------- |
 | App ID           | `com.t3tools.t3code` | `com.agentdock.desktop` |
-| Data folder      | `~/.t3`              | `~/.agent-dock`         |
-| Electron profile | `t3code-v2`          | `agent-dock`            |
+| Data folder      | `~/.t3`              | `~/.agentdock-next`     |
+| Electron profile | `t3code-v2`          | `agentdock-next`        |
 | Command line     | `t3`                 | `agentdock`             |
 
 ## Build locally
@@ -32,7 +32,7 @@ T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=true vp run dist:desktop:win:x64
 ## Release
 
 Push a tag and GitHub Actions builds the macOS DMG and Windows installer and
-publishes them as a GitHub Release (`.github/workflows/agent-dock-release.yml`):
+publishes them as a GitHub Release (`.github/workflows/agentdock-release.yml`):
 
 ```sh
 git tag v0.1.11 && git push origin v0.1.11

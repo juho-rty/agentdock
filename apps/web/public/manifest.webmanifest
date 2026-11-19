@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Agent dock",
-  "short_name": "Agent dock",
+  "name": "AgentDock",
+  "short_name": "AgentDock",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

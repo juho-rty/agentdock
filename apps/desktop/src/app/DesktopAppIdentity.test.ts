@@ -133,7 +133,7 @@ const withIdentity = <A, E, R>(
               input.legacyPathProbeError
                 ? Effect.fail(input.legacyPathProbeError)
                 : Effect.succeed(
-                    input.legacyPathExists === true && /agent-dock(-dev)?-legacy/.test(path),
+                    input.legacyPathExists === true && /agentdock-next(-dev)?-legacy/.test(path),
                   ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
@@ -154,7 +154,7 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         const userDataPath = yield* identity.resolveUserDataPath;
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/agent-dock");
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/agentdock-next");
       }),
       { legacyPathExists: true },
     ),
@@ -166,7 +166,7 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         assert.equal(
           yield* identity.resolveUserDataPath,
-          "/Users/alice/Library/Application Support/agent-dock-dev-legacy",
+          "/Users/alice/Library/Application Support/agentdock-next-dev-legacy",
         );
       }),
       {
@@ -200,9 +200,9 @@ describe("DesktopAppIdentity", () => {
 
         const runtimeName = calls.setName[0];
         assert.isDefined(runtimeName);
-        assert.equal(runtimeName, `Agent dock ${stage}`);
+        assert.equal(runtimeName, `AgentDock ${stage}`);
         assert.match(runtimeName.replaceAll(" ", ""), /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `Agent dock (${stage})`);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `AgentDock (${stage})`);
       }),
       { calls, environment },
     );

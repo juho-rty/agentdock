@@ -40,8 +40,8 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const names = input.isDevelopment
-      ? { current: "agent-dock-dev", legacy: "agent-dock-dev-legacy" }
-      : { current: "agent-dock", legacy: "agent-dock-legacy" };
+      ? { current: "agentdock-next-dev", legacy: "agentdock-next-dev-legacy" }
+      : { current: "agentdock-next", legacy: "agentdock-next-legacy" };
     const destinationPath = path.join(input.appDataDirectory, names.current);
     const legacyPath = path.join(input.appDataDirectory, names.legacy);
     const inspect = (resourcePath: string) =>
@@ -62,7 +62,7 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
     const legacyState = path.join(legacyPath, "Local State");
     const sourceState = (yield* inspect(legacyState))
       ? legacyState
-      : path.join(input.appDataDirectory, "agent-dock-legacy", "Local State");
+      : path.join(input.appDataDirectory, "agentdock-next-legacy", "Local State");
     if (!(yield* inspect(sourceState))) return destinationPath;
     // Windows safeStorage keys live here. Copy only these preferences, never locked databases.
     const state = yield* fs

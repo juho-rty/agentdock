@@ -1,4 +1,4 @@
-name: Agent dock desktop builds
+name: AgentDock desktop builds
 
 # Push a tag like v0.1.0 to build and publish a GitHub Release with the macOS
 # DMG and Windows installer. "Run workflow" builds without publishing.
@@ -89,7 +89,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: agent-dock-${{ matrix.platform }}-${{ matrix.arch }}
+          name: agentdock-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             release/*.dmg
             release/*.zip
