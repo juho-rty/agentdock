@@ -77,6 +77,10 @@ jobs:
         shell: bash
         env:
           T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: "true"
+          # The source repo is private, so installed apps check this public
+          # repo for updates. scripts/agentdock-publish-release.sh copies each
+          # release there.
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: juho-rty/agentdock-releases
           # Unsigned: macOS asks users to approve the app once (right-click > Open).
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
@@ -111,3 +115,16 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+      # Optional: with a RELEASES_TOKEN secret (a token that can write to
+      # juho-rty/agentdock-releases), CI copies the release there itself.
+      # Without it, run scripts/agentdock-publish-release.sh locally.
+      - name: Copy release to the public update feed
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        if: env.GH_TOKEN != ''
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            -R juho-rty/agentdock-releases \
+            --title "AgentDock ${{ github.ref_name }}" \
+            --notes "Installers for AgentDock ${{ github.ref_name }}."

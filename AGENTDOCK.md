@@ -52,6 +52,13 @@ T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=true vp run dist:desktop:win:x64
   git tag v0.1.11 && git push origin v0.1.11
   ```
 
+  When the build finishes, copy it to the public update feed and to
+  `Dropbox/Apps/AgentDock-installers`:
+
+  ```sh
+  scripts/agentdock-publish-release.sh v0.1.11
+  ```
+
 - Upstream T3 Code is the `upstream` remote (tags not fetched, so they never clash with ours):
 
   ```sh
@@ -61,9 +68,10 @@ T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=true vp run dist:desktop:win:x64
 - Upstream's own workflows are parked in `.github/workflows-upstream/` (they need paid runners and secrets).
 
 Builds are unsigned. First launch: on macOS, right-click the app and choose Open; on
-Windows, choose "More info -> Run anyway" in SmartScreen. Release builds look for
-updates in this repository's releases; macOS may refuse to auto-update unsigned builds,
-installing the new DMG always works.
+Windows, choose "More info -> Run anyway" in SmartScreen. This repository is private, so
+installed apps look for updates in the public `juho-rty/agentdock-releases` (installers only,
+no source). Windows updates itself from there. macOS refuses to auto-update ad-hoc signed
+builds, so install the new DMG from `Dropbox/Apps/AgentDock-installers` instead.
 
 ## Phone
 
