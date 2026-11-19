@@ -182,6 +182,9 @@ interface ThreadRowContext {
   readonly providerEntriesByEnvironment: ReadonlyMap<string, ProviderEntries>;
 }
 
+/** Only the first screenful of rows rises in; the rest are offscreen anyway. */
+const RISE_ROW_LIMIT = 10;
+
 function ThreadRow(props: {
   readonly row: MobileHomeThreadRow<EnvironmentThreadShell>;
   readonly context: ThreadRowContext;
@@ -198,7 +201,10 @@ function ThreadRow(props: {
 
   return (
     <li
-      className="liquid-rise group/row"
+      className={cn(
+        "group/row [content-visibility:auto] [contain-intrinsic-size:auto_4rem]",
+        props.index < RISE_ROW_LIMIT && "liquid-rise",
+      )}
       style={{ "--liquid-index": props.index } as CSSProperties}
     >
       <Link
