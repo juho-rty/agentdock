@@ -67,7 +67,7 @@ jobs:
 
       - name: Install Linux packaging tools
         if: matrix.platform == 'win'
-        run: sudo apt-get update && sudo apt-get install -y imagemagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick pkg-config libsecret-1-dev
 
       - name: Build resource monitor
         shell: bash
