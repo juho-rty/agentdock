@@ -11,6 +11,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -83,6 +84,7 @@ export const layer = Layer.effectDiscard(
     const threads = yield* ThreadManagement.ThreadManagementService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
     const httpClient = yield* HttpClient.HttpClient;
+    const sql = yield* SqlClient.SqlClient;
     const scope = yield* Effect.scope;
 
     /** The last occasion seen per top-level thread; see decideThreadAlert. */
@@ -176,16 +178,40 @@ export const layer = Layer.effectDiscard(
       );
     });
 
+    /** The agent's latest reply on the thread; thinking is not a reply. */
+    const readLastMessage = (threadId: ThreadId) =>
+      sql<{ readonly text: string | null }>`
+        SELECT json_extract(payload_json, '$.text') AS text
+        FROM orchestration_v2_projection_messages
+        WHERE thread_id = ${threadId}
+          AND role = 'assistant'
+          AND message_id NOT LIKE '%thinking%'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `.pipe(
+        Effect.map((rows) => rows[0]?.text ?? null),
+        Effect.orElseSucceed(() => null),
+      );
+
     /** Starts a delivery and returns at once, so a slow push service holds nothing up. */
     const announce = (
       environmentId: EnvironmentId,
       thread: AgentAwarenessThread,
       kind: WebPushAlertKind,
     ) =>
-      deliver(
-        thread.id,
-        webPushMessage({ kind, environmentId, threadId: thread.id, threadTitle: thread.title }),
-      ).pipe(
+      readLastMessage(thread.id).pipe(
+        Effect.flatMap((lastMessage) =>
+          deliver(
+            thread.id,
+            webPushMessage({
+              kind,
+              environmentId,
+              threadId: thread.id,
+              threadTitle: thread.title,
+              lastMessage,
+            }),
+          ),
+        ),
         Effect.catchCause((cause) =>
           Cause.hasInterruptsOnly(cause)
             ? Effect.void
@@ -199,8 +225,22 @@ export const layer = Layer.effectDiscard(
       );
 
     const observe = (environmentId: EnvironmentId, thread: AgentAwarenessThread) => {
+      // The phone hears about every finished turn, even one that left a build or a delegate
+      // to report back later: the reply is there to read now. Each wake that follows is a
+      // new run and sends its own, which replaces this one on the phone. Only a monitor's
+      // per-line wakes stay held, or a log would buzz the phone on every line.
+      const turnView: AgentAwarenessThread = {
+        ...thread,
+        pendingBackgroundTasks: (thread.pendingBackgroundTasks ?? [])
+          .filter((task) => task.kind === "monitor")
+          .map(({ awaited: _awaited, ...task }) => task),
+      };
       // Only the phase is used, so the project's name does not matter.
-      const state = projectThreadAwarenessV2({ environmentId, project: { title: "" }, thread });
+      const state = projectThreadAwarenessV2({
+        environmentId,
+        project: { title: "" },
+        thread: turnView,
+      });
       return observeThreadAlert({
         thread,
         phase: state?.phase ?? null,

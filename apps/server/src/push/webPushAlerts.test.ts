@@ -200,7 +200,7 @@ describe("decideThreadAlert", () => {
 });
 
 describe("webPushMessage", () => {
-  it("names the reason, the thread, and a link that opens it", () => {
+  it("titles the thread and says why, with a link that opens it", () => {
     expect(
       webPushMessage({
         kind: "approval",
@@ -209,24 +209,38 @@ describe("webPushMessage", () => {
         threadTitle: "  Fix login  ",
       }),
     ).toEqual({
-      title: "Approval needed",
-      body: "Fix login",
+      title: "Fix login",
+      body: "Approval needed",
       url: "/env%201/thread%2F1",
       tag: "thread:thread/1",
     });
   });
 
-  it("shortens very long titles and fills an empty one", () => {
+  it("adds the agent's last message as plain text", () => {
+    expect(
+      webPushMessage({
+        kind: "completed",
+        environmentId: "e",
+        threadId: "t",
+        threadTitle: "Fix login",
+        lastMessage: "## Done\n\n- **Login** works, see [the file](/a/b.ts:3)\n```ts\ncode\n```",
+      }).body,
+    ).toBe("Completed · Done Login works, see the file");
+  });
+
+  it("shortens long text and fills an empty title", () => {
     const long = webPushMessage({
       kind: "completed",
       environmentId: "e",
       threadId: "t",
       threadTitle: "x".repeat(500),
+      lastMessage: "y".repeat(500),
     });
+    expect(long.title.length).toBe(80);
     expect(long.body.length).toBe(180);
     expect(long.body.endsWith("…")).toBe(true);
     expect(
-      webPushMessage({ kind: "failed", environmentId: "e", threadId: "t", threadTitle: " " }).body,
+      webPushMessage({ kind: "failed", environmentId: "e", threadId: "t", threadTitle: " " }).title,
     ).toBe("AgentDock");
   });
 });

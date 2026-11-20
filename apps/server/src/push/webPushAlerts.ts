@@ -113,26 +113,49 @@ export interface WebPushMessage {
   readonly tag: string;
 }
 
-const TITLES: Record<WebPushAlertKind, string> = {
+const KIND_LABELS: Record<WebPushAlertKind, string> = {
   approval: "Approval needed",
   input: "Input needed",
-  completed: "Thread completed",
-  failed: "Thread failed",
+  completed: "Completed",
+  failed: "Failed",
 };
 
+const TITLE_MAX_LENGTH = 80;
 const BODY_MAX_LENGTH = 180;
 
+const shorten = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
+/** The agent's last message as one plain line: no Markdown marks, links or code fences. */
+function webPushExcerpt(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/gm, "")
+    .replace(/[*_`~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The thread's name is the title. The body says why, followed by the start of the agent's
+ * last message, so the notification can be read without opening the app.
+ */
 export function webPushMessage(input: {
   readonly kind: WebPushAlertKind;
   readonly environmentId: string;
   readonly threadId: string;
   readonly threadTitle: string;
+  /** The agent's last message, if there is one. */
+  readonly lastMessage?: string | null | undefined;
 }): WebPushMessage {
-  const title = input.threadTitle.trim();
-  const body = title.length > BODY_MAX_LENGTH ? `${title.slice(0, BODY_MAX_LENGTH - 1)}…` : title;
+  const label = KIND_LABELS[input.kind];
+  const threadTitle = input.threadTitle.trim().replace(/\s+/g, " ");
+  const excerpt = webPushExcerpt(input.lastMessage ?? "");
   return {
-    title: TITLES[input.kind],
-    body: body === "" ? "AgentDock" : body,
+    title: threadTitle === "" ? "AgentDock" : shorten(threadTitle, TITLE_MAX_LENGTH),
+    body: shorten(excerpt === "" ? label : `${label} · ${excerpt}`, BODY_MAX_LENGTH),
     url: `/${encodeURIComponent(input.environmentId)}/${encodeURIComponent(input.threadId)}`,
     tag: `thread:${input.threadId}`,
   };
