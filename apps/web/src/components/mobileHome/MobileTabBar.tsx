@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 
 import { openCommandPalette } from "../../commandPaletteBus";
+import { useChatProject } from "../../hooks/useChatProject";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { cn } from "../../lib/utils";
 import { withoutChatProjects } from "../../sidebarThreadMode";
@@ -33,14 +34,25 @@ import { useMobileHomeFilters } from "./useMobileHomeFilters";
  */
 let lastActiveIndex = -1;
 
-/** Starts a draft in the home's filtered project, or the most recent one. */
+/** Starts a chat on the Chat tab, else a draft in the filtered or most recent project. */
 function useMobileNewThread() {
   const projects = useProjects();
   const threads = useVisibleThreadShells();
-  const { filters, projectOption } = useMobileHomeFilters();
+  const { environments, filters, projectOption, threadMode } = useMobileHomeFilters();
   const handleNewThread = useNewThreadHandler();
+  const chat = useChatProject();
 
   return () => {
+    if (threadMode === "chat") {
+      const filtered = environments.find(
+        (environment) => environment.environmentId === filters.environmentId,
+      );
+      const environmentId = chat.chatEnvironmentId(filtered?.environmentId ?? null);
+      if (environmentId !== null) {
+        void chat.startChatDraft(environmentId);
+        return;
+      }
+    }
     const openProjects = projects.filter((project) => project.archivedAt == null);
     const target = resolveMobileNewThreadProject({
       environmentId: filters.environmentId,

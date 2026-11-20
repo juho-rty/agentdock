@@ -9,7 +9,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { msg, T, useGT, useMessages } from "gt-react";
-import { ChevronDownIcon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
+import { ChevronDownIcon, HammerIcon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
@@ -20,6 +20,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
 import { cn } from "../../lib/utils";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
+import { filterThreadsForMode, type SidebarThreadMode } from "../../sidebarThreadMode";
 import {
   deriveProviderEntriesByEnvironment,
   shouldShowInstanceBadge,
@@ -42,6 +43,7 @@ import { resolveThreadStatusPill, resolveWorkingStartedAt } from "../Sidebar.log
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import {
   buildMobileHomeSections,
@@ -296,6 +298,8 @@ export function MobileHomeView(props: {
   readonly projectOptions: ReadonlyArray<MobileHomeProjectOption>;
   readonly filters: MobileHomeFilters;
   readonly onFiltersChange: (filters: MobileHomeFilters) => void;
+  readonly threadMode: SidebarThreadMode;
+  readonly onThreadModeChange: (mode: SidebarThreadMode) => void;
   readonly sections: MobileHomeSections<EnvironmentThreadShell>;
   /** False while an environment could still deliver threads. */
   readonly loaded: boolean;
@@ -307,9 +311,16 @@ export function MobileHomeView(props: {
   const gt = useGT();
   const contentArea = workspaceAreaProps("home", 1, gt("Home", { $context: "the home screen" }));
   const { filters, sections } = props;
-  const filtered = filters.environmentId !== null || filters.projectKey !== null;
+  const chatMode = props.threadMode === "chat";
+  const filtered = filters.environmentId !== null || (!chatMode && filters.projectKey !== null);
+  // Chats have no projects, and one filtered project needs no heading: the filter names it.
+  const singleList = chatMode || filters.projectKey !== null;
   const empty = sections.threads.length === 0 && sections.working.length === 0;
-  const threadGroups = groupMobileHomeRowsByProject(sections.threads, props.projectOptions);
+  const threadGroups = singleList
+    ? sections.threads.length === 0
+      ? []
+      : [{ projectKey: null, displayName: null, rows: sections.threads }]
+    : groupMobileHomeRowsByProject(sections.threads, props.projectOptions);
   const [rise] = useState(() => !homeShownBefore);
   const scrollerRef = useRef<HTMLDivElement>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- puts the scroller DOM node back at the offset it was left at
@@ -347,6 +358,26 @@ export function MobileHomeView(props: {
             <SearchIcon aria-hidden className="size-[1.125rem]" />
           </button>
         </header>
+        <div className="px-5 pt-2">
+          <ToggleGroup
+            aria-label={gt("Thread kind")}
+            className="w-full *:flex-1"
+            value={[props.threadMode]}
+            onValueChange={(next) => {
+              const value = next[0];
+              if (value === "agent" || value === "chat") props.onThreadModeChange(value);
+            }}
+          >
+            <Toggle value="agent">
+              <HammerIcon />
+              <T>Agent</T>
+            </Toggle>
+            <Toggle value="chat">
+              <MessageCircleIcon />
+              <T>Chat</T>
+            </Toggle>
+          </ToggleGroup>
+        </div>
         <div className="flex items-center gap-2 px-5 py-3">
           <FilterMenu
             ariaLabel={gt("Filter threads by environment")}
@@ -358,21 +389,27 @@ export function MobileHomeView(props: {
             }))}
             onChange={(environmentId) => props.onFiltersChange({ ...filters, environmentId })}
           />
-          <FilterMenu
-            ariaLabel={gt("Filter threads by project")}
-            allLabel={gt("All projects")}
-            value={filters.projectKey}
-            options={props.projectOptions.map((option) => ({
-              value: option.projectKey,
-              label: option.displayName,
-            }))}
-            onChange={(projectKey) => props.onFiltersChange({ ...filters, projectKey })}
-          />
+          {chatMode ? null : (
+            <FilterMenu
+              ariaLabel={gt("Filter threads by project")}
+              allLabel={gt("All projects")}
+              value={filters.projectKey}
+              options={props.projectOptions.map((option) => ({
+                value: option.projectKey,
+                label: option.displayName,
+              }))}
+              onChange={(projectKey) => props.onFiltersChange({ ...filters, projectKey })}
+            />
+          )}
           {filtered ? (
             <button
               type="button"
               aria-label={gt("Reset thread filters")}
-              onClick={() => props.onFiltersChange(NO_MOBILE_HOME_FILTERS)}
+              onClick={() =>
+                props.onFiltersChange(
+                  chatMode ? { ...filters, environmentId: null } : NO_MOBILE_HOME_FILTERS,
+                )
+              }
               className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent"
             >
               <XIcon aria-hidden className="size-4" />
@@ -418,13 +455,12 @@ export function MobileHomeView(props: {
           const name = group.displayName ?? gt("Other");
           return (
             <section key={group.projectKey ?? ""} className="mb-2">
-              {/* One project on screen needs no heading: the filter already names it. */}
-              {filters.projectKey !== null ? null : (
+              {singleList ? null : (
                 <h2 className="truncate px-5 pt-2.5 pb-1 text-sm font-semibold text-muted-foreground">
                   {name}
                 </h2>
               )}
-              <ul aria-label={filters.projectKey !== null ? gt("Threads") : name}>
+              <ul aria-label={singleList ? gt("Threads") : name}>
                 {group.rows.map((row, index) => (
                   <ThreadRow
                     key={`${row.thread.environmentId}:${row.thread.id}`}
@@ -453,6 +489,12 @@ export function MobileHomeView(props: {
               <T>Clear filters</T>
             </button>
           </EmptyNote>
+        ) : chatMode ? (
+          <EmptyNote title={<T>No chats yet</T>}>
+            <p className="text-sm text-muted-foreground">
+              <T>Start one with the new thread button.</T>
+            </p>
+          </EmptyNote>
         ) : (
           <EmptyNote title={<T>No threads yet</T>}>
             <p className="text-sm text-muted-foreground">
@@ -476,8 +518,16 @@ export function MobileHome() {
   const machineById = useEnvironmentMachines();
   const providersByEnvironment = useEnvironmentProviders();
   const serverConfigs = useServerConfigs();
-  const { environments, filters, projectOptions, projectOption, setFilters } =
-    useMobileHomeFilters();
+  const {
+    environments,
+    filters,
+    projectOptions,
+    projectOption,
+    setFilters,
+    threadMode,
+    setThreadMode,
+    chatKeys,
+  } = useMobileHomeFilters();
   const [workingExpanded, setWorkingExpanded] = useLocalStorage(
     MOBILE_HOME_WORKING_EXPANDED_STORAGE_KEY,
     true,
@@ -501,8 +551,10 @@ export function MobileHome() {
       projectOptions={projectOptions}
       filters={filters}
       onFiltersChange={setFilters}
+      threadMode={threadMode}
+      onThreadModeChange={setThreadMode}
       sections={buildMobileHomeSections({
-        threads,
+        threads: filterThreadsForMode(threads, threadMode, chatKeys),
         delegatedUnderParent,
         environmentId: filters.environmentId,
         projectOption,

@@ -1,4 +1,5 @@
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { SidebarThreadMode } from "../../sidebarThreadMode";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import { useState } from "react";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -87,6 +88,7 @@ const projectOptions: MobileHomeProjectOption[] = [
 function Home(props: { readonly onSearch: () => void }) {
   const [filters, setFilters] = useState<MobileHomeFilters>(NO_MOBILE_HOME_FILTERS);
   const [workingExpanded, setWorkingExpanded] = useState(true);
+  const [threadMode, setThreadMode] = useState<SidebarThreadMode>("agent");
   return (
     <>
       <MobileHomeView
@@ -97,6 +99,8 @@ function Home(props: { readonly onSearch: () => void }) {
         projectOptions={projectOptions}
         filters={filters}
         onFiltersChange={setFilters}
+        threadMode={threadMode}
+        onThreadModeChange={setThreadMode}
         sections={buildMobileHomeSections({
           threads,
           delegatedUnderParent: new Set(),

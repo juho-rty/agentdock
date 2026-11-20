@@ -39,7 +39,8 @@ export default function PreviewImageContent(props: {
   if (failed) return <FileSurfaceFailure message={gt("Unable to load image.")} />;
   return (
     <>
-      <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-1 text-xs text-muted-foreground">
+      {/* A phone zooms with its fingers in the viewer a tap opens, not with these buttons. */}
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-1 text-xs text-muted-foreground max-sm:hidden">
         <span className="tabular-nums">
           {natural.width
             ? `${natural.width.toLocaleString()} × ${natural.height.toLocaleString()}`

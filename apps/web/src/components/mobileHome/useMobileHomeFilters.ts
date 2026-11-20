@@ -3,6 +3,12 @@ import { useGT } from "gt-react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useSidebarProjectGroups } from "../../hooks/useSidebarProjectGroups";
+import {
+  chatProjectKeys,
+  SIDEBAR_THREAD_MODE_STORAGE_KEY,
+  type SidebarThreadMode,
+  SidebarThreadModeSchema,
+} from "../../sidebarThreadMode";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentIdentities } from "../../state/environments";
 import {
@@ -19,7 +25,8 @@ const CHATS_PROJECT_KEY = "agentdock:chats";
 
 /**
  * The phone home's filters. Stored, because the home unmounts whenever a thread opens,
- * and shared with the tab bar so a new thread starts in the filtered project.
+ * and shared with the tab bar so a new thread starts in the filtered project. Agent and
+ * Chat share the sidebar's stored tab, so the phone and the desktop list the same kind.
  */
 export function useMobileHomeFilters() {
   const gt = useGT();
@@ -32,19 +39,25 @@ export function useMobileHomeFilters() {
     MobileHomeFiltersSchema,
   );
 
-  const chatProjects = projects.filter(
-    (project) => project.isChat === true && project.archivedAt == null,
+  const [threadMode, setThreadMode] = useLocalStorage<SidebarThreadMode, SidebarThreadMode>(
+    SIDEBAR_THREAD_MODE_STORAGE_KEY,
+    "agent",
+    SidebarThreadModeSchema,
   );
-  const allProjectOptions: MobileHomeProjectOption[] = [
-    ...pickableProjectGroups(projectGroups).map((group) => ({
+
+  // Chat lists every chat thread, so it stands in for a project filter.
+  const chatOption: MobileHomeProjectOption = {
+    projectKey: CHATS_PROJECT_KEY,
+    displayName: gt("Chats"),
+    members: projects.filter((project) => project.isChat === true && project.archivedAt == null),
+  };
+  const allProjectOptions: MobileHomeProjectOption[] = pickableProjectGroups(projectGroups).map(
+    (group) => ({
       projectKey: group.projectKey,
       displayName: group.displayName,
       members: group.memberProjects,
-    })),
-    ...(chatProjects.length > 0
-      ? [{ projectKey: CHATS_PROJECT_KEY, displayName: gt("Chats"), members: chatProjects }]
-      : []),
-  ];
+    }),
+  );
   const filters = resolveMobileHomeFilters({
     filters: storedFilters,
     environmentIds: environments.map((environment) => environment.environmentId),
@@ -57,7 +70,12 @@ export function useMobileHomeFilters() {
     filters,
     projectOptions,
     projectOption:
-      projectOptions.find((option) => option.projectKey === filters.projectKey) ?? null,
+      threadMode === "chat"
+        ? chatOption
+        : (projectOptions.find((option) => option.projectKey === filters.projectKey) ?? null),
     setFilters,
+    threadMode,
+    setThreadMode,
+    chatKeys: chatProjectKeys(projects),
   };
 }

@@ -12,6 +12,7 @@ import { useGT } from "gt-react";
 import { FolderIcon } from "lucide-react";
 
 import { contextMenuSourceOf } from "../../contextMenuSource";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
@@ -79,6 +80,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   resolveDragPath,
 }: MarkdownFileLinkProps) {
   const gt = useGT();
+  const isPhone = useMediaQuery("max-sm");
   const nativeDrag = useNativeFileDrag(environmentId, resolveDragPath);
   const handleOpenInEditor = () => {
     if (!onOpen) {
@@ -119,6 +121,11 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   };
 
   const handleOpenInFilePreview = () => {
+    // A phone opens pictures and videos in the full-screen touch viewer, not the panel.
+    if (isPhone && onOpenMedia) {
+      onOpenMedia();
+      return;
+    }
     if (threadRef && panelPath) {
       onOpenInPanel(panelPath, line);
       return;
