@@ -331,6 +331,36 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
     );
 
     it.effect.skipIf(!symlinksSupported)(
+      "sets a shadow home's own database backups aside and shares the folder",
+      () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sharedHome = yield* makeTempDir("t3code-codex-shared-");
+          const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
+          const shadowHome = path.join(shadowRoot, "shadow");
+          yield* writeTextFile(path.join(sharedHome, "db-backups", "shared.db"), "shared");
+          yield* writeTextFile(path.join(shadowHome, "db-backups", "local.db"), "local");
+
+          const layout = yield* resolveCodexHomeLayout(
+            decodeCodexSettings({ homePath: sharedHome, shadowHomePath: shadowHome }),
+          );
+          yield* materializeCodexShadowHome(layout);
+
+          expect(yield* fileSystem.readLink(path.join(shadowHome, "db-backups"))).toBe(
+            path.join(sharedHome, "db-backups"),
+          );
+          const setAside = (yield* fileSystem.readDirectory(shadowHome)).filter((name) =>
+            name.startsWith("db-backups.local-"),
+          );
+          expect(setAside).toHaveLength(1);
+          expect(
+            yield* fileSystem.readFileString(path.join(shadowHome, setAside[0]!, "local.db")),
+          ).toBe("local");
+        }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)(
       "rejects shared entries that already exist in the shadow home as real files",
       () =>
         Effect.gen(function* () {

@@ -1,4 +1,5 @@
 import { ProviderDriverKind, type CodexSettings } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -27,6 +28,7 @@ const KNOWN_SHARED_DIRECTORIES = [
   "logs",
   "mcp-oauth-locks",
   "thread-writer-locks",
+  "db-backups",
 ] as const;
 
 // auth.lock guards the shadow home's private auth.json.
@@ -39,6 +41,9 @@ const REPLACEABLE_SHARED_RUNTIME_ENTRIES = new Set([
   "thread-writer-locks",
   ".sqlite-maintenance.lock",
 ]);
+// Codex writes database backups into whichever home it runs in, so a shadow home can hold its
+// own copy from before it shared the folder. That copy is renamed, never deleted.
+const SET_ASIDE_SHARED_ENTRIES = new Set(["db-backups"]);
 
 function resolveHomePath(path: Path.Path, home: string, value: string | undefined): string {
   const expanded =
@@ -80,7 +85,14 @@ export class CodexShadowHomeFileSystemError extends Schema.TaggedError<CodexShad
   "CodexShadowHomeFileSystemError",
   {
     ...CodexShadowHomeContext,
-    operation: Schema.Literals(["readLink", "makeDirectory", "readDirectory", "remove", "symlink"]),
+    operation: Schema.Literals([
+      "readLink",
+      "makeDirectory",
+      "readDirectory",
+      "remove",
+      "rename",
+      "symlink",
+    ]),
     path: Schema.String,
     targetPath: Schema.optional(Schema.String),
     entryName: Schema.optional(Schema.String),
@@ -247,6 +259,28 @@ const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (inpu
         }),
     }),
   );
+
+  if (state._tag === "NotSymlink" && SET_ASIDE_SHARED_ENTRIES.has(input.entryName)) {
+    const setAside = `${link}.local-${yield* Clock.currentTimeMillis}`;
+    yield* input.fileSystem.rename(link, setAside).pipe(
+      Effect.catchTags({
+        PlatformError: (cause) =>
+          new CodexShadowHomeFileSystemError({
+            sharedHomePath: input.sharedHomePath,
+            effectiveHomePath: input.effectiveHomePath,
+            operation: "rename",
+            path: link,
+            targetPath: setAside,
+            entryName: input.entryName,
+            cause,
+          }),
+      }),
+    );
+    yield* Effect.logInfo("Moved a Codex shadow home's own database backups aside to share them.", {
+      path: setAside,
+    });
+    return yield* createLink;
+  }
 
   if (state._tag === "NotSymlink") {
     if (!REPLACEABLE_SHARED_RUNTIME_ENTRIES.has(input.entryName)) {
