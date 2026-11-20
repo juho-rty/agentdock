@@ -253,7 +253,8 @@ export const ChatHeader = memo(function ChatHeader({
       ref={breadcrumbContainerRef}
       className={cn(
         "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        // Phones: the three panel buttons sit over the header's right edge.
+        rightPanelOpen ? "pr-10" : "pr-24 max-sm:pr-30",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
@@ -263,7 +264,7 @@ export const ChatHeader = memo(function ChatHeader({
       >
         {activeProject ? (
           <>
-            <WorkspaceBreadcrumbItem className="shrink">
+            <WorkspaceBreadcrumbItem className="shrink max-sm:hidden">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -290,14 +291,14 @@ export const ChatHeader = memo(function ChatHeader({
                 </TooltipPopup>
               </Tooltip>
             </WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbSeparator>
+            <WorkspaceBreadcrumbSeparator className="max-sm:hidden">
               <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
             </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
         {parentThreadLink ? (
           <>
-            <WorkspaceBreadcrumbItem>
+            <WorkspaceBreadcrumbItem className="max-sm:hidden">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -326,7 +327,7 @@ export const ChatHeader = memo(function ChatHeader({
                 <TooltipPopup side="top">{parentThreadLink.title}</TooltipPopup>
               </Tooltip>
             </WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbSeparator>
+            <WorkspaceBreadcrumbSeparator className="max-sm:hidden">
               <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
             </WorkspaceBreadcrumbSeparator>
           </>
@@ -367,7 +368,10 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
-                <h2 className="min-w-0" dir={textDirection(activeThreadTitle)}>
+                <h2
+                  className="min-w-0 max-sm:text-base max-sm:font-semibold"
+                  dir={textDirection(activeThreadTitle)}
+                >
                   <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
                 </h2>
                 <ChevronDownIcon
@@ -396,7 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
           )}
           {renamingTitle === null && activeThreadLinkOrigin ? (
             <Tooltip>
-              <TooltipTrigger render={<Badge variant="info" size="sm" />}>
+              <TooltipTrigger render={<Badge variant="info" size="sm" className="max-sm:hidden" />}>
                 <T>
                   From <Var>{activeThreadLinkOrigin}</Var>
                 </T>
