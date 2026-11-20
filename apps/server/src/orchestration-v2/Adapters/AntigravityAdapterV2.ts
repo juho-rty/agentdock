@@ -284,6 +284,11 @@ export function makeAntigravityAcpAdapterFlavor(
     requiresSignIn: isAntigravitySignInRequiredError,
     // Antigravity can leave a prompt open without updates; long tools and approvals pause this.
     promptInactivityTimeout: "15 minutes",
+    // run_command moves a command past WaitMsBeforeAsync into a background task and the turn
+    // ends. When the task finishes, Antigravity wakes the agent on the root session with no
+    // prompt open, so that work is taken as a continuation run; the debounce ends it.
+    enablePostSettleContinuation: true,
+    deferFinalizeForBackgroundWork: true,
     // 1.4.5 returns the root trajectory's Gemini usageMetadata delta; 1.4.1 returns none.
     reportsPerTurnPromptUsage: true,
     geminiPromptUsage: true,

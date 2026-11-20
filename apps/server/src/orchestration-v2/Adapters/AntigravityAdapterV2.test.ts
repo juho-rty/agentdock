@@ -67,6 +67,11 @@ function permissionRequest(
 }
 
 describe("AntigravityAdapterV2 flavor", () => {
+  it("takes the agent's work after a background command wakes it as a continuation", () => {
+    assert.strictEqual(flavor.enablePostSettleContinuation, true);
+    assert.strictEqual(flavor.deferFinalizeForBackgroundWork, true);
+  });
+
   it("keeps a successful subagent launch running until the parent turn becomes idle", () => {
     const batch = flavor.extractSubagentUpdate?.({
       toolCallId: "trajectory:4",
