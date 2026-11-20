@@ -164,6 +164,7 @@ import * as WebhookRoute from "./scheduledTasks/webhookRoute.ts";
 import * as RelayDeliveryProof from "./scheduledTasks/RelayDeliveryProof.ts";
 import * as HeldHooksWaker from "./relay/HeldHooksWaker.ts";
 import * as WebPushHttp from "./push/http.ts";
+import * as DevicePairingHttp from "./peer/devicePairingHttp.ts";
 import * as WebPushNotifier from "./push/WebPushNotifier.ts";
 import * as WebPushSubscriptions from "./persistence/WebPushSubscriptions.ts";
 import * as McpOAuth from "./auth/McpOAuth.ts";
@@ -851,6 +852,7 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(ProjectHttp.layer),
       Layer.provide(speechHttpApiLayer),
       Layer.provide(WebPushHttp.layer.pipe(Layer.provide(WebPushSubscriptions.layer))),
+      Layer.provide(DevicePairingHttp.layer.pipe(Layer.provide(FetchHttpClient.layer))),
       Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
       Layer.provide(WebhookRoute.layer.pipe(Layer.provide(RelayDeliveryProof.layer))),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),

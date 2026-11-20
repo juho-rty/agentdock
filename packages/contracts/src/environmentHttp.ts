@@ -48,6 +48,7 @@ import {
 } from "./environment.ts";
 import {
   DpopFailureReason,
+  EnvironmentId,
   AuthSessionId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -1099,6 +1100,41 @@ class EnvironmentWebPushHttpApi extends HttpApiGroup.make("webPush")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
+/** A one-time pairing code for the phone, made by a linked environment for itself. */
+export const LinkedDevicePairing = Schema.Struct({
+  environmentId: EnvironmentId,
+  label: Schema.String,
+  /** The linked environment's phone relay: the address a phone can reach it at. */
+  relayUrl: Schema.String,
+  credential: TrimmedNonEmptyString,
+});
+export type LinkedDevicePairing = typeof LinkedDevicePairing.Type;
+
+/**
+ * Lets a phone paired with one environment reach the environments linked to it without a
+ * pairing link per machine. The phone asks its own environment, which asks each link.
+ */
+class EnvironmentDevicePairingHttpApi extends HttpApiGroup.make("devicePairing")
+  .add(
+    // Called by a linked environment with its link token, which only /mcp otherwise accepts.
+    HttpApiEndpoint.post("issueForLink", "/api/peer-link/device-pairing", {
+      headers: OptionalBearerHeaders,
+      success: LinkedDevicePairing,
+      error: [EnvironmentAuthInvalidError, EnvironmentHttpForbiddenError, EnvironmentInternalError],
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("linkedPairings", "/api/phone/linked-pairings", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Struct({
+        /** Environments this device already has; no code is made for these. */
+        knownEnvironmentIds: Schema.Array(EnvironmentId).check(Schema.isMaxLength(64)),
+      }),
+      success: Schema.Struct({ pairings: Schema.Array(LinkedDevicePairing) }),
+      error: EnvironmentScopedOperationErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
+
 class EnvironmentWebhooksHttpApi extends HttpApiGroup.make("webhooks")
   .add(HttpApiEndpoint.post("webhookPost", WEBHOOK_PATH, webhookEndpoint))
   .add(HttpApiEndpoint.put("webhookPut", WEBHOOK_PATH, webhookEndpoint))
@@ -1114,5 +1150,6 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentProjectsHttpApi)
   .add(EnvironmentVoiceHttpApi)
   .add(EnvironmentWebPushHttpApi)
+  .add(EnvironmentDevicePairingHttpApi)
   .add(EnvironmentConnectHttpApi)
   .add(EnvironmentWebhooksHttpApi) {}
