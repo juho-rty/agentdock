@@ -2812,11 +2812,10 @@ code {
 
 @media (max-width: 767px) {
   /*
-   * iOS draws its own blurred scroll edge under the status bar unless a fixed,
-   * opaque element covers it; this solid strip keeps the top edge crisp.
+   * iOS blurs the top of the page, header included, unless a fixed opaque element
+   * sits on the top edge. It must be a real element: iOS does not count a pseudo-element.
    */
-  body::before {
-    content: "";
+  #top-edge-cover {
     position: fixed;
     inset: 0 0 auto;
     height: env(safe-area-inset-top);
