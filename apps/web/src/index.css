@@ -2803,7 +2803,8 @@ code {
 
 /* The selected-tab pill slides between tabs instead of jumping. */
 @utility liquid-tab-indicator {
-  transition: translate var(--liquid-duration) var(--liquid-spring);
+  /* Short and without overshoot: the pill is the tap's feedback, so it must land fast. */
+  transition: translate 220ms var(--liquid-spring-smooth);
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;

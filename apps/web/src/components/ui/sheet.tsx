@@ -60,6 +60,7 @@ function SheetPopup({
   children,
   showCloseButton = true,
   keepMounted = false,
+  fullScreenOnPhone = false,
   transitionDurationMs,
   side = "right",
   variant = "default",
@@ -68,6 +69,8 @@ function SheetPopup({
 }: SheetPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   keepMounted?: boolean;
+  /** On a phone the sheet is the whole screen, clear of the status bar and home indicator. */
+  fullScreenOnPhone?: boolean;
   transitionDurationMs?: number;
   side?: "right" | "left" | "top" | "bottom";
   variant?: "default" | "inset";
@@ -103,6 +106,7 @@ function SheetPopup({
               "col-start-2 w-[calc(100%-(--spacing(12)))] max-w-md border-s data-ending-style:translate-x-8 data-starting-style:translate-x-8",
             variant === "inset" &&
               "before:hidden sm:rounded-2xl sm:border sm:before:rounded-[calc(var(--radius-2xl)-1px)] sm:**:data-[slot=sheet-footer]:rounded-b-[calc(var(--radius-2xl)-1px)]",
+            fullScreenOnPhone && "max-sm:border-s-0 max-sm:pt-safe max-sm:pb-safe",
             instant &&
               "transition-none! will-change-auto! data-ending-style:translate-x-0! data-starting-style:translate-x-0! data-ending-style:translate-y-0! data-starting-style:translate-y-0! data-ending-style:opacity-100! data-starting-style:opacity-100!",
             className,

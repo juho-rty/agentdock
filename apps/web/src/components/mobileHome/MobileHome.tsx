@@ -45,6 +45,7 @@ import { Spinner } from "../ui/spinner";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import {
   buildMobileHomeSections,
+  groupMobileHomeRowsByProject,
   MOBILE_HOME_WORKING_EXPANDED_STORAGE_KEY,
   NO_MOBILE_HOME_FILTERS,
   type MobileHomeFilters,
@@ -308,6 +309,7 @@ export function MobileHomeView(props: {
   const { filters, sections } = props;
   const filtered = filters.environmentId !== null || filters.projectKey !== null;
   const empty = sections.threads.length === 0 && sections.working.length === 0;
+  const threadGroups = groupMobileHomeRowsByProject(sections.threads, props.projectOptions);
   const [rise] = useState(() => !homeShownBefore);
   const scrollerRef = useRef<HTMLDivElement>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- puts the scroller DOM node back at the offset it was left at
@@ -412,20 +414,31 @@ export function MobileHomeView(props: {
             ) : null}
           </section>
         ) : null}
-        {sections.threads.length > 0 ? (
-          <ul aria-label={gt("Threads")}>
-            {sections.threads.map((row, index) => (
-              <ThreadRow
-                key={`${row.thread.environmentId}:${row.thread.id}`}
-                row={row}
-                index={index}
-                rise={rise}
-                context={props.context}
-                working={false}
-              />
-            ))}
-          </ul>
-        ) : null}
+        {threadGroups.map((group) => {
+          const name = group.displayName ?? gt("Other");
+          return (
+            <section key={group.projectKey ?? ""} className="mb-2">
+              {/* One project on screen needs no heading: the filter already names it. */}
+              {filters.projectKey !== null ? null : (
+                <h2 className="truncate px-5 pt-2.5 pb-1 text-sm font-semibold text-muted-foreground">
+                  {name}
+                </h2>
+              )}
+              <ul aria-label={filters.projectKey !== null ? gt("Threads") : name}>
+                {group.rows.map((row, index) => (
+                  <ThreadRow
+                    key={`${row.thread.environmentId}:${row.thread.id}`}
+                    row={row}
+                    index={index}
+                    rise={rise}
+                    context={props.context}
+                    working={false}
+                  />
+                ))}
+              </ul>
+            </section>
+          );
+        })}
         {!empty ? null : !props.loaded ? (
           <div className="flex justify-center py-16">
             <Spinner size="lg" tone="muted" />

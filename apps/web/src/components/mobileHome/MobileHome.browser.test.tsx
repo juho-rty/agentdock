@@ -137,7 +137,7 @@ const rowIds = (root: ParentNode) =>
   );
 
 describe("phone home", () => {
-  it("lists the Working section first, then threads newest first, with the floating tab bar", async () => {
+  it("lists the Working section first, then threads by project, with the floating tab bar", async () => {
     await page.viewport(390, 844);
     const onSearch = vi.fn();
     await using screen = await render(<Home onSearch={onSearch} />);
@@ -146,8 +146,16 @@ describe("phone home", () => {
     expect(rowIds(screen.container)).toEqual([
       "thread-busy",
       "thread-new",
-      "thread-remote",
       "thread-old",
+      "thread-remote",
+    ]);
+    // Threads sit under their project, the project with the newest thread first.
+    expect(rowIds(screen.getByRole("list", { name: "App" }).element())).toEqual([
+      "thread-new",
+      "thread-old",
+    ]);
+    expect(rowIds(screen.getByRole("list", { name: "Server" }).element())).toEqual([
+      "thread-remote",
     ]);
     const working = screen.getByRole("list", { name: "Working" });
     await expect.element(working).toBeVisible();

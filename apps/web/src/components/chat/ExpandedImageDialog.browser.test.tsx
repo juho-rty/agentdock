@@ -90,7 +90,9 @@ describe("ExpandedImageDialog", () => {
       );
 
       const viewer = screen.getByRole("region", { name: "Pipeline, zoomable image" });
-      const availableWidth = window.innerWidth * 0.92 - (window.innerWidth >= 640 ? 96 : 0);
+      // A phone shows the picture edge to edge.
+      const availableWidth =
+        window.innerWidth >= 640 ? window.innerWidth * 0.92 - 96 : window.innerWidth;
       await vi.waitFor(() =>
         expect(viewer.element().getBoundingClientRect().width).toBeCloseTo(availableWidth, 0),
       );

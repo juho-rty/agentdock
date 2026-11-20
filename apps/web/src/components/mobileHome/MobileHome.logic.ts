@@ -122,6 +122,50 @@ export function buildMobileHomeSections<T extends EnvironmentThreadShell>(input:
   };
 }
 
+export interface MobileHomeProjectGroup<T> {
+  /** Null for threads whose project is not one of the options. */
+  readonly projectKey: string | null;
+  readonly displayName: string | null;
+  readonly rows: ReadonlyArray<MobileHomeThreadRow<T>>;
+}
+
+/**
+ * Rows gathered under their project. Groups keep the order their newest thread has in
+ * `rows`, and each group keeps the order of `rows`.
+ */
+export function groupMobileHomeRowsByProject<
+  T extends { readonly environmentId: string; readonly projectId: string },
+>(
+  rows: ReadonlyArray<MobileHomeThreadRow<T>>,
+  projectOptions: ReadonlyArray<MobileHomeProjectOption>,
+): MobileHomeProjectGroup<T>[] {
+  const optionByMember = new Map<string, MobileHomeProjectOption>();
+  for (const option of projectOptions) {
+    for (const member of option.members) {
+      optionByMember.set(`${member.environmentId}:${member.id}`, option);
+    }
+  }
+  const groups = new Map<
+    string | null,
+    { projectKey: string | null; displayName: string | null; rows: MobileHomeThreadRow<T>[] }
+  >();
+  for (const row of rows) {
+    const option = optionByMember.get(`${row.thread.environmentId}:${row.thread.projectId}`);
+    const projectKey = option?.projectKey ?? null;
+    const group = groups.get(projectKey);
+    if (group === undefined) {
+      groups.set(projectKey, {
+        projectKey,
+        displayName: option?.displayName ?? null,
+        rows: [row],
+      });
+    } else {
+      group.rows.push(row);
+    }
+  }
+  return [...groups.values()];
+}
+
 /**
  * Where the new-thread button starts a draft: the filtered project (on the filtered
  * environment when it has a member there), else the fallback, else nowhere.

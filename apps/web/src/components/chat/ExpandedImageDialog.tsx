@@ -107,6 +107,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     if (target?.isConnected) target.focus({ preventScroll: true, focusVisible });
   };
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
   const imageCount = preview.images.length;
   const index =
     imageCount > 0 ? (((preview.index + imageOffset) % imageCount) + imageCount) % imageCount : 0;
@@ -186,8 +187,30 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         mediaControlsPlacement="inside"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
+        className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:[--media-width:100vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
         onKeyDown={onKeyDown}
+        // On a phone a sideways swipe turns the page and a downward one closes it.
+        onTouchStart={(event) => {
+          const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+          swipeRef.current =
+            touch === undefined || zoomableImageRef.current?.zoomed() === true
+              ? null
+              : { x: touch.clientX, y: touch.clientY };
+        }}
+        onTouchEnd={(event) => {
+          const start = swipeRef.current;
+          const touch = event.changedTouches[0];
+          swipeRef.current = null;
+          if (start === null || touch === undefined || event.touches.length > 0) return;
+          if (event.target instanceof HTMLVideoElement) return;
+          const dx = touch.clientX - start.x;
+          const dy = touch.clientY - start.y;
+          if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            if (preview.images.length > 1) navigateImage(dx < 0 ? 1 : -1);
+          } else if (dy > 90 && dy > Math.abs(dx) * 1.5) {
+            close();
+          }
+        }}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocus.target}
         onClick={(event) => {
@@ -202,7 +225,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           ref={closeButtonRef}
           size="sm"
           variant="media-close"
-          className="absolute left-0 top-0 z-20 max-[8rem]:left-1/2 max-[8rem]:-translate-x-1/2"
+          className="absolute left-0 top-0 z-20 max-sm:left-3 max-[8rem]:left-1/2 max-[8rem]:-translate-x-1/2"
           onClick={close}
           aria-label={isVideo ? gt("Back, close video preview") : gt("Back, close image preview")}
         >
@@ -214,7 +237,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             type="button"
             size="icon"
             variant="media-navigation"
-            className="left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
+            className="left-0 top-auto bottom-0 translate-y-0 max-sm:left-2 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
             aria-label={gt("Previous media")}
             onClick={() => navigateImage(-1)}
           >
@@ -295,7 +318,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             type="button"
             size="icon"
             variant="media-navigation"
-            className="right-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
+            className="right-0 top-auto bottom-0 translate-y-0 max-sm:right-2 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
             aria-label={gt("Next media")}
             onClick={() => navigateImage(1)}
           >

@@ -37,6 +37,8 @@ function subscribeViewerSize(onChange: () => void) {
 
 export interface ZoomableImageHandle {
   pan: (key: string) => boolean;
+  /** True while the image is magnified, when a drag pans it rather than leaving it. */
+  zoomed: () => boolean;
 }
 
 export function ZoomableImage({
@@ -71,12 +73,16 @@ export function ZoomableImage({
     top: number;
   } | null>(null);
   const suppressClickRef = useRef(false);
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const lastTapRef = useRef(0);
+  // A phone shows the picture edge to edge, with room left for the controls around it.
+  const phone = viewerSize.width < 640;
   const [dragging, setDragging] = useState(false);
   const maxHeight = Math.max(1, Math.min(viewerSize.height * 0.86, viewerSize.height - 160));
   // A vector scales without loss, and an SVG without width and height reports a tiny default size.
   const fit = Math.min(
     mimeType === "image/svg+xml" ? Infinity : 1,
-    (viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
+    (phone ? viewerSize.width : viewerSize.width * 0.92 - 96) / (naturalSize.width || 1),
     maxHeight / (naturalSize.height || 1),
   );
   const width = naturalSize.width * fit * zoom;
@@ -112,6 +118,7 @@ export function ZoomableImage({
         }
         return true;
       },
+      zoomed: () => zoom > 1,
     }),
     [zoom],
   );
@@ -149,9 +156,32 @@ export function ZoomableImage({
         y: event.clientY,
       });
     };
+    // Two fingers zoom the picture itself; otherwise the browser would zoom the whole page.
+    const spread = (touches: TouchList) =>
+      Math.hypot(
+        touches[0]!.clientX - touches[1]!.clientX,
+        touches[0]!.clientY - touches[1]!.clientY,
+      );
+    const touchStart = (event: TouchEvent) => {
+      pinchRef.current =
+        event.touches.length === 2 ? { distance: spread(event.touches), zoom } : null;
+    };
+    const touchMove = (event: TouchEvent) => {
+      const pinch = pinchRef.current;
+      if (pinch === null || event.touches.length !== 2) return;
+      event.preventDefault();
+      changeZoom((pinch.zoom * spread(event.touches)) / (pinch.distance || 1), {
+        x: (event.touches[0]!.clientX + event.touches[1]!.clientX) / 2,
+        y: (event.touches[0]!.clientY + event.touches[1]!.clientY) / 2,
+      });
+    };
     viewport.addEventListener("wheel", wheel, { passive: false });
+    viewport.addEventListener("touchstart", touchStart, { passive: true });
+    viewport.addEventListener("touchmove", touchMove, { passive: false });
     return () => {
       viewport.removeEventListener("wheel", wheel);
+      viewport.removeEventListener("touchstart", touchStart);
+      viewport.removeEventListener("touchmove", touchMove);
       viewportRef.current = null;
     };
   };
@@ -166,7 +196,7 @@ export function ZoomableImage({
           "Click to zoom in or return to fit. Pinch or Ctrl+scroll to zoom, scroll or drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit.",
         )}
         tabIndex={0}
-        className="max-w-[var(--media-width)] overflow-auto overscroll-contain rounded-lg bg-background shadow-2xl ring-1 ring-border/70 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className="max-w-[var(--media-width)] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg bg-background max-sm:rounded-none shadow-2xl ring-1 ring-border/70 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
         style={{
           width: width || undefined,
           height: height || undefined,
@@ -176,6 +206,13 @@ export function ZoomableImage({
         onClick={(event) => {
           // Pointer capture emits a click after dragging; preserve zoom.
           if (suppressClickRef.current || event.detail > 1) return;
+          // A finger zooms on the second tap; one tap is too easy to make by accident.
+          if ((event.nativeEvent as PointerEvent).pointerType === "touch") {
+            const previous = lastTapRef.current;
+            lastTapRef.current = event.timeStamp;
+            if (event.timeStamp - previous > 320) return;
+            lastTapRef.current = 0;
+          }
           changeZoom(zoom > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
         }}
         onKeyDown={(event) => {

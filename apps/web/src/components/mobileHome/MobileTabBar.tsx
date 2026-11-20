@@ -1,5 +1,5 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import {
   ChartColumnIcon,
@@ -66,11 +66,13 @@ function TabLink(props: {
   readonly label: string;
   readonly active: boolean;
   readonly icon: LucideIcon;
+  readonly onSelect: () => void;
 }) {
   const Icon = props.icon;
   return (
     <Link
       to={props.to}
+      onClick={props.onSelect}
       aria-label={props.label}
       aria-current={props.active ? "page" : undefined}
       className={cn(
@@ -100,14 +102,18 @@ export function MobileTabBarView(props: {
   const [pillIndex, setPillIndex] = useState(() =>
     lastActiveIndex >= 0 && activeIndex >= 0 ? lastActiveIndex : activeIndex,
   );
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a frame timer: the pill must be painted at its old place before it moves, or the CSS transition has nothing to run from
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a frame timer: a new bar must paint the pill at its old place before it moves, or the CSS transition has nothing to run from
   useEffect(() => {
     lastActiveIndex = activeIndex;
-    if (pillIndex === activeIndex) return;
-    // A frame later, so the pill is first drawn where it was and then moves.
     const frame = requestAnimationFrame(() => setPillIndex(activeIndex));
     return () => cancelAnimationFrame(frame);
-  }, [activeIndex, pillIndex]);
+  }, [activeIndex]);
+  // The tap moves the pill at once; the page may take a moment longer to arrive.
+  const select = (tab: MobileTab) => {
+    lastActiveIndex = tabs.indexOf(tab);
+    setPillIndex(lastActiveIndex);
+  };
+  const shownTab = tabs[pillIndex] ?? props.activeTab;
   return (
     <nav
       aria-label={gt("Main tabs")}
@@ -133,27 +139,31 @@ export function MobileTabBarView(props: {
           <TabLink
             to="/"
             label={gt("Threads")}
-            active={props.activeTab === "threads"}
+            active={shownTab === "threads"}
+            onSelect={() => select("threads")}
             icon={MessagesSquareIcon}
           />
           {props.pullRequestsSupported ? (
             <TabLink
               to="/pull-requests"
               label={gt("Pull requests")}
-              active={props.activeTab === "pullRequests"}
+              active={shownTab === "pullRequests"}
+              onSelect={() => select("pullRequests")}
               icon={PullRequestGlyph.pullRequest}
             />
           ) : null}
           <TabLink
             to="/usage"
             label={gt("Usage")}
-            active={props.activeTab === "usage"}
+            active={shownTab === "usage"}
+            onSelect={() => select("usage")}
             icon={ChartColumnIcon}
           />
           <TabLink
             to="/settings"
             label={gt("Settings")}
-            active={props.activeTab === "settings"}
+            active={shownTab === "settings"}
+            onSelect={() => select("settings")}
             icon={SettingsIcon}
           />
         </div>
@@ -176,6 +186,16 @@ export function MobileTabBar(props: { readonly variant: "floating" | "docked" })
   const pullRequestsSupported = usePullRequestsSupported();
   const onNewThread = useMobileNewThread();
   const activeTab = resolveMobileTab(pathname);
+  const router = useRouter();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- warms the router: tab pages are separate downloads, and a first tap that has to fetch one feels dead
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      for (const to of ["/", "/usage", "/settings", "/pull-requests"] as const) {
+        void router.preloadRoute({ to }).catch(() => undefined);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [router]);
   if (activeTab === null) return null;
   return (
     <MobileTabBarView
