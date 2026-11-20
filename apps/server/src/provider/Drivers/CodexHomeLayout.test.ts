@@ -361,6 +361,33 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
     );
 
     it.effect.skipIf(!symlinksSupported)(
+      "sets a shadow home's own log database aside and shares the shared one",
+      () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sharedHome = yield* makeTempDir("t3code-codex-shared-");
+          const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
+          const shadowHome = path.join(shadowRoot, "shadow");
+          yield* writeTextFile(path.join(sharedHome, "logs_2.sqlite"), "shared");
+          yield* writeTextFile(path.join(shadowHome, "logs_2.sqlite"), "local");
+
+          const layout = yield* resolveCodexHomeLayout(
+            decodeCodexSettings({ homePath: sharedHome, shadowHomePath: shadowHome }),
+          );
+          yield* materializeCodexShadowHome(layout);
+
+          expect(yield* fileSystem.readLink(path.join(shadowHome, "logs_2.sqlite"))).toBe(
+            path.join(sharedHome, "logs_2.sqlite"),
+          );
+          const setAside = (yield* fileSystem.readDirectory(shadowHome)).filter((name) =>
+            name.startsWith("logs_2.sqlite.local-"),
+          );
+          expect(setAside).toHaveLength(1);
+        }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)(
       "rejects shared entries that already exist in the shadow home as real files",
       () =>
         Effect.gen(function* () {

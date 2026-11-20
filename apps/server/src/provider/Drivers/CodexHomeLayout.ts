@@ -41,9 +41,11 @@ const REPLACEABLE_SHARED_RUNTIME_ENTRIES = new Set([
   "thread-writer-locks",
   ".sqlite-maintenance.lock",
 ]);
-// Codex writes database backups into whichever home it runs in, so a shadow home can hold its
-// own copy from before it shared the folder. That copy is renamed, never deleted.
-const SET_ASIDE_SHARED_ENTRIES = new Set(["db-backups"]);
+// Codex writes database backups and its log database into whichever home it runs in, so a
+// shadow home can hold its own copy from before it shared them. That copy is renamed, never deleted.
+function isSetAsideSharedEntry(entryName: string): boolean {
+  return entryName === "db-backups" || /^logs_\d+\.sqlite(?:-shm|-wal)?$/.test(entryName);
+}
 
 function resolveHomePath(path: Path.Path, home: string, value: string | undefined): string {
   const expanded =
@@ -260,7 +262,7 @@ const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (inpu
     }),
   );
 
-  if (state._tag === "NotSymlink" && SET_ASIDE_SHARED_ENTRIES.has(input.entryName)) {
+  if (state._tag === "NotSymlink" && isSetAsideSharedEntry(input.entryName)) {
     const setAside = `${link}.local-${yield* Clock.currentTimeMillis}`;
     yield* input.fileSystem.rename(link, setAside).pipe(
       Effect.catchTags({
@@ -276,7 +278,7 @@ const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (inpu
           }),
       }),
     );
-    yield* Effect.logInfo("Moved a Codex shadow home's own database backups aside to share them.", {
+    yield* Effect.logInfo("Moved a Codex shadow home's own copy aside to share the shared one.", {
       path: setAside,
     });
     return yield* createLink;
