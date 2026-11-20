@@ -2906,53 +2906,40 @@ code {
     transition-duration: 320ms;
   }
 
-  /* Home ↔ thread: the outgoing page recedes while the incoming one glides in. */
+  /*
+   * Home ↔ thread: a push. The new page slides in over the old one, which drifts a little
+   * the same way; going back runs it in reverse. Neither page fades, so nothing blinks.
+   */
   html:active-view-transition-type(liquid-forward),
   html:active-view-transition-type(liquid-back) {
-    &::view-transition-old(root) {
-      animation: liquid-nav-out 200ms ease-in both;
-    }
-
+    &::view-transition-old(root),
     &::view-transition-new(root) {
-      animation: liquid-nav-in 400ms var(--liquid-spring-smooth) both;
+      mix-blend-mode: normal;
+      animation-duration: 360ms;
+      animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+      animation-fill-mode: both;
     }
   }
 
   html:active-view-transition-type(liquid-forward) {
-    --liquid-nav-shift: 28px;
-  }
-
-  html:active-view-transition-type(liquid-back) {
-    --liquid-nav-shift: -28px;
-  }
-
-  /* Tab ↔ tab: the pages slide a full width past the tab bar, which holds still. */
-  html:active-view-transition-type(liquid-tab-next),
-  html:active-view-transition-type(liquid-tab-previous) {
     &::view-transition-old(root) {
-      animation: liquid-tab-out 340ms var(--liquid-spring-smooth) both;
+      animation-name: liquid-nav-under-out;
     }
 
     &::view-transition-new(root) {
-      animation: liquid-tab-in 340ms var(--liquid-spring-smooth) both;
+      animation-name: liquid-nav-over-in;
     }
+  }
 
-    &::view-transition-group(mobile-tab-bar) {
+  html:active-view-transition-type(liquid-back) {
+    &::view-transition-old(root) {
       z-index: 1;
+      animation-name: liquid-nav-over-out;
     }
 
-    &::view-transition-old(mobile-tab-bar),
-    &::view-transition-new(mobile-tab-bar) {
-      animation-duration: 200ms;
+    &::view-transition-new(root) {
+      animation-name: liquid-nav-under-in;
     }
-  }
-
-  html:active-view-transition-type(liquid-tab-next) {
-    --liquid-tab-shift: 100%;
-  }
-
-  html:active-view-transition-type(liquid-tab-previous) {
-    --liquid-tab-shift: -100%;
   }
 
   /* Popups stay readable over the list behind them even where the blur is not drawn. */
@@ -2989,9 +2976,7 @@ code {
     }
 
     html:active-view-transition-type(liquid-forward),
-    html:active-view-transition-type(liquid-back),
-    html:active-view-transition-type(liquid-tab-next),
-    html:active-view-transition-type(liquid-tab-previous) {
+    html:active-view-transition-type(liquid-back) {
       &::view-transition-old(root),
       &::view-transition-new(root) {
         animation: none;
@@ -3007,28 +2992,26 @@ code {
   }
 }
 
-@keyframes liquid-tab-out {
-  to {
-    translate: calc(var(--liquid-tab-shift) * -1) 0;
-  }
-}
-
-@keyframes liquid-tab-in {
+@keyframes liquid-nav-over-in {
   from {
-    translate: var(--liquid-tab-shift) 0;
+    translate: 100% 0;
   }
 }
 
-@keyframes liquid-nav-out {
+@keyframes liquid-nav-over-out {
   to {
-    opacity: 0;
-    translate: calc(var(--liquid-nav-shift) * -0.5) 0;
+    translate: 100% 0;
   }
 }
 
-@keyframes liquid-nav-in {
+@keyframes liquid-nav-under-in {
   from {
-    opacity: 0;
-    translate: var(--liquid-nav-shift) 0;
+    translate: -25% 0;
+  }
+}
+
+@keyframes liquid-nav-under-out {
+  to {
+    translate: -25% 0;
   }
 }

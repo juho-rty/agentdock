@@ -137,17 +137,17 @@ const rowIds = (root: ParentNode) =>
   );
 
 describe("phone home", () => {
-  it("lists threads newest first with a Working section and the floating tab bar", async () => {
+  it("lists the Working section first, then threads newest first, with the floating tab bar", async () => {
     await page.viewport(390, 844);
     const onSearch = vi.fn();
     await using screen = await render(<Home onSearch={onSearch} />);
 
     await expect.element(screen.getByRole("heading", { name: "AgentDock" })).toBeVisible();
     expect(rowIds(screen.container)).toEqual([
+      "thread-busy",
       "thread-new",
       "thread-remote",
       "thread-old",
-      "thread-busy",
     ]);
     const working = screen.getByRole("list", { name: "Working" });
     await expect.element(working).toBeVisible();

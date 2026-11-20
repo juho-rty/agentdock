@@ -10,7 +10,7 @@ import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { ChevronDownIcon, MessageCircleIcon, SearchIcon, XIcon } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../branding";
 import { openCommandPalette } from "../../commandPaletteBus";
@@ -182,6 +182,13 @@ interface ThreadRowContext {
   readonly providerEntriesByEnvironment: ReadonlyMap<string, ProviderEntries>;
 }
 
+/**
+ * The home is rebuilt each time a thread is left. These keep that from showing: the rows
+ * rise in only the first time, and the list comes back at the place it was left.
+ */
+let homeShownBefore = false;
+let homeScrollTop = 0;
+
 /** Only the first screenful of rows rises in; the rest are offscreen anyway. */
 const RISE_ROW_LIMIT = 10;
 
@@ -190,12 +197,14 @@ function ThreadRow(props: {
   readonly context: ThreadRowContext;
   readonly working: boolean;
   readonly index: number;
+  /** False when the home is being returned to: the rows are already familiar. */
+  readonly rise: boolean;
 }) {
   const m = useMessages();
   const { thread } = props.row;
   const project = props.context.projectByKey.get(`${thread.environmentId}:${thread.projectId}`);
   const environmentLabel = props.context.environmentLabelById.get(thread.environmentId);
-  const pill = props.working ? null : resolveThreadStatusPill({ thread });
+  const pill = resolveThreadStatusPill({ thread });
   const startedAt = props.working ? resolveWorkingStartedAt(thread) : null;
   const startedMs = startedAt === null ? Number.NaN : Date.parse(startedAt);
 
@@ -203,7 +212,7 @@ function ThreadRow(props: {
     <li
       className={cn(
         "group/row [content-visibility:auto] [contain-intrinsic-size:auto_4rem]",
-        props.index < RISE_ROW_LIMIT && "liquid-rise",
+        props.rise && props.index < RISE_ROW_LIMIT && "liquid-rise",
       )}
       style={{ "--liquid-index": props.index } as CSSProperties}
     >
@@ -238,24 +247,27 @@ function ThreadRow(props: {
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-            {props.working ? (
-              <>
+            {pill === null ? (
+              props.working ? (
                 <Spinner size="xs" />
-                {Number.isNaN(startedMs) ? null : (
-                  <WorkingDuration environmentId={thread.environmentId} startedMs={startedMs} />
-                )}
-              </>
+              ) : null
             ) : (
-              <>
-                {pill === null ? null : (
-                  <span
-                    role="img"
-                    aria-label={m(pill.label)}
-                    className={cn("size-2 rounded-full", pill.dotClass)}
-                  />
-                )}
-                <RelativeTime timestamp={props.row.activityAt} />
-              </>
+              <span className={cn("inline-flex items-center gap-1 font-medium", pill.colorClass)}>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "size-2 rounded-full",
+                    pill.dotClass,
+                    pill.pulse && "motion-safe:animate-status-pulse",
+                  )}
+                />
+                {m(pill.label)}
+              </span>
+            )}
+            {!props.working ? (
+              <RelativeTime timestamp={props.row.activityAt} />
+            ) : Number.isNaN(startedMs) ? null : (
+              <WorkingDuration environmentId={thread.environmentId} startedMs={startedMs} />
             )}
           </span>
           <ProviderStack
@@ -296,6 +308,13 @@ export function MobileHomeView(props: {
   const { filters, sections } = props;
   const filtered = filters.environmentId !== null || filters.projectKey !== null;
   const empty = sections.threads.length === 0 && sections.working.length === 0;
+  const [rise] = useState(() => !homeShownBefore);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- puts the scroller DOM node back at the offset it was left at
+  useLayoutEffect(() => {
+    homeShownBefore = true;
+    if (scrollerRef.current !== null) scrollerRef.current.scrollTop = homeScrollTop;
+  }, []);
 
   return (
     <SidebarInset
@@ -306,7 +325,13 @@ export function MobileHomeView(props: {
     >
       {/* The desktop window only moves where CSS opts in, so keep a titlebar strip. */}
       {isElectron ? <WorkspacePageHeader electron /> : null}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-safe pt-safe">
+      <div
+        ref={scrollerRef}
+        onScroll={(event) => {
+          homeScrollTop = event.currentTarget.scrollTop;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-safe pt-safe"
+      >
         <header className="flex items-center justify-between gap-3 px-5 pt-3 pb-1">
           <h1 className="truncate text-3xl font-bold leading-tight tracking-tight">
             {APP_BASE_NAME}
@@ -352,21 +377,8 @@ export function MobileHomeView(props: {
             </button>
           ) : null}
         </div>
-        {sections.threads.length > 0 ? (
-          <ul aria-label={gt("Threads")}>
-            {sections.threads.map((row, index) => (
-              <ThreadRow
-                key={`${row.thread.environmentId}:${row.thread.id}`}
-                row={row}
-                index={index}
-                context={props.context}
-                working={false}
-              />
-            ))}
-          </ul>
-        ) : null}
         {sections.working.length > 0 ? (
-          <section className="mt-2">
+          <section className="mb-2">
             <button
               type="button"
               aria-expanded={props.workingExpanded}
@@ -391,6 +403,7 @@ export function MobileHomeView(props: {
                     key={`${row.thread.environmentId}:${row.thread.id}`}
                     row={row}
                     index={index}
+                    rise={rise}
                     context={props.context}
                     working
                   />
@@ -398,6 +411,20 @@ export function MobileHomeView(props: {
               </ul>
             ) : null}
           </section>
+        ) : null}
+        {sections.threads.length > 0 ? (
+          <ul aria-label={gt("Threads")}>
+            {sections.threads.map((row, index) => (
+              <ThreadRow
+                key={`${row.thread.environmentId}:${row.thread.id}`}
+                row={row}
+                index={index}
+                rise={rise}
+                context={props.context}
+                working={false}
+              />
+            ))}
+          </ul>
         ) : null}
         {!empty ? null : !props.loaded ? (
           <div className="flex justify-center py-16">

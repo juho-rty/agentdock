@@ -9,6 +9,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useEffect, useState } from "react";
+
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 
 import { openCommandPalette } from "../../commandPaletteBus";
@@ -25,8 +27,11 @@ import {
 } from "./MobileHome.logic";
 import { useMobileHomeFilters } from "./useMobileHomeFilters";
 
-const TAB_NEXT_VIEW_TRANSITION = { types: ["liquid-tab-next"] };
-const TAB_PREVIOUS_VIEW_TRANSITION = { types: ["liquid-tab-previous"] };
+/**
+ * The bar is rebuilt when a tab opens as its own page, so the pill's last place is kept
+ * here: the new bar starts the pill there and slides it to the tab that was tapped.
+ */
+let lastActiveIndex = -1;
 
 /** Starts a draft in the home's filtered project, or the most recent one. */
 function useMobileNewThread() {
@@ -61,16 +66,11 @@ function TabLink(props: {
   readonly label: string;
   readonly active: boolean;
   readonly icon: LucideIcon;
-  /** Which way the page slides in: `next` for a tab to the right of the current one. */
-  readonly direction: "next" | "previous";
 }) {
   const Icon = props.icon;
   return (
     <Link
       to={props.to}
-      viewTransition={
-        props.direction === "next" ? TAB_NEXT_VIEW_TRANSITION : TAB_PREVIOUS_VIEW_TRANSITION
-      }
       aria-label={props.label}
       aria-current={props.active ? "page" : undefined}
       className={cn(
@@ -97,14 +97,21 @@ export function MobileTabBarView(props: {
     ? ["threads", "pullRequests", "usage", "settings"]
     : ["threads", "usage", "settings"];
   const activeIndex = props.activeTab === null ? -1 : tabs.indexOf(props.activeTab);
-  const directionOf = (tab: MobileTab) =>
-    tabs.indexOf(tab) > activeIndex ? ("next" as const) : ("previous" as const);
+  const [pillIndex, setPillIndex] = useState(() =>
+    lastActiveIndex >= 0 && activeIndex >= 0 ? lastActiveIndex : activeIndex,
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a frame timer: the pill must be painted at its old place before it moves, or the CSS transition has nothing to run from
+  useEffect(() => {
+    lastActiveIndex = activeIndex;
+    if (pillIndex === activeIndex) return;
+    // A frame later, so the pill is first drawn where it was and then moves.
+    const frame = requestAnimationFrame(() => setPillIndex(activeIndex));
+    return () => cancelAnimationFrame(frame);
+  }, [activeIndex, pillIndex]);
   return (
     <nav
       aria-label={gt("Main tabs")}
       data-mobile-tab-bar={props.reserveSpace ? "reserve" : "overlay"}
-      // Named so the bar holds still while the pages slide past it between tabs.
-      style={{ viewTransitionName: "mobile-tab-bar" }}
       className={cn(
         "pointer-events-none shrink-0 [-webkit-app-region:no-drag]",
         // A docked bar sits in a page that already ends above the home indicator.
@@ -113,13 +120,13 @@ export function MobileTabBarView(props: {
     >
       <div className="flex items-center gap-3 px-4 pb-2.5">
         <div className="liquid-glass pointer-events-auto relative flex h-12 min-w-0 flex-1 items-center gap-1 rounded-full px-1">
-          {activeIndex < 0 ? null : (
+          {activeIndex < 0 || pillIndex < 0 ? null : (
             <span
               aria-hidden
               className="liquid-tab-indicator pointer-events-none absolute inset-y-0 left-1 my-auto h-10 rounded-full bg-foreground/[0.08]"
               style={{
                 width: `calc((100% - 0.5rem - ${tabs.length - 1} * 0.25rem) / ${tabs.length})`,
-                translate: `calc(${activeIndex} * (100% + 0.25rem)) 0`,
+                translate: `calc(${pillIndex} * (100% + 0.25rem)) 0`,
               }}
             />
           )}
@@ -128,7 +135,6 @@ export function MobileTabBarView(props: {
             label={gt("Threads")}
             active={props.activeTab === "threads"}
             icon={MessagesSquareIcon}
-            direction={directionOf("threads")}
           />
           {props.pullRequestsSupported ? (
             <TabLink
@@ -136,7 +142,6 @@ export function MobileTabBarView(props: {
               label={gt("Pull requests")}
               active={props.activeTab === "pullRequests"}
               icon={PullRequestGlyph.pullRequest}
-              direction={directionOf("pullRequests")}
             />
           ) : null}
           <TabLink
@@ -144,14 +149,12 @@ export function MobileTabBarView(props: {
             label={gt("Usage")}
             active={props.activeTab === "usage"}
             icon={ChartColumnIcon}
-            direction={directionOf("usage")}
           />
           <TabLink
             to="/settings"
             label={gt("Settings")}
             active={props.activeTab === "settings"}
             icon={SettingsIcon}
-            direction={directionOf("settings")}
           />
         </div>
         <button
