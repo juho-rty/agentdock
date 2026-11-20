@@ -2814,14 +2814,25 @@ code {
   /*
    * iOS blurs the top of the page, header included, unless a fixed opaque element
    * sits on the top edge. It must be a real element: iOS does not count a pseudo-element.
+   * iOS looks a few pixels in from the edge, which may be measured from under the status
+   * bar, so the element reaches past it; that extra part has a colour but paints nothing.
    */
   #top-edge-cover {
     position: fixed;
     inset: 0 0 auto;
-    height: env(safe-area-inset-top);
-    background: var(--background);
+    height: calc(env(safe-area-inset-top, 0px) + 12px);
+    background-color: var(--background);
+    background-clip: text;
     z-index: 2147483647;
     pointer-events: none;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: env(safe-area-inset-top, 0px);
+      background: var(--background);
+    }
   }
 
   /*
