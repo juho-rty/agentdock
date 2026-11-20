@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { makeThreadFixture } from "../../test-fixtures";
 import type { Thread } from "../../types";
 import {
+  resolveMobileChatEnvironment,
   buildMobileHomeSections,
   filterMobileHomeProjectOptions,
   resolveMobileHomeFilters,
@@ -221,5 +222,27 @@ describe("resolveMobileNewThreadProject", () => {
         fallbackProjects: [],
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveMobileChatEnvironment", () => {
+  const machineById = new Map([
+    ["laptop", "laptop"],
+    ["mini", "mac-mini"],
+  ]);
+  it("keeps chats on the Mac mini unless another computer was picked", () => {
+    const environmentIds = ["laptop", "mini"];
+    expect(resolveMobileChatEnvironment({ stored: null, environmentIds, machineById })).toBe(
+      "mini",
+    );
+    expect(resolveMobileChatEnvironment({ stored: "laptop", environmentIds, machineById })).toBe(
+      "laptop",
+    );
+    expect(resolveMobileChatEnvironment({ stored: "gone", environmentIds, machineById })).toBe(
+      "mini",
+    );
+    expect(
+      resolveMobileChatEnvironment({ stored: null, environmentIds: ["laptop"], machineById }),
+    ).toBe("laptop");
   });
 });

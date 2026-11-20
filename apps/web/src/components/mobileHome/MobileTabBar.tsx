@@ -1,4 +1,5 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import {
@@ -34,24 +35,18 @@ import { useMobileHomeFilters } from "./useMobileHomeFilters";
  */
 let lastActiveIndex = -1;
 
-/** Starts a chat on the Chat tab, else a draft in the filtered or most recent project. */
+/** On the Chat tab starts a chat on the chat computer, else a draft in the filtered or latest project. */
 function useMobileNewThread() {
   const projects = useProjects();
   const threads = useVisibleThreadShells();
-  const { environments, filters, projectOption, threadMode } = useMobileHomeFilters();
+  const { chatEnvironmentId, filters, projectOption, threadMode } = useMobileHomeFilters();
   const handleNewThread = useNewThreadHandler();
   const chat = useChatProject();
 
   return () => {
     if (threadMode === "chat") {
-      const filtered = environments.find(
-        (environment) => environment.environmentId === filters.environmentId,
-      );
-      const environmentId = chat.chatEnvironmentId(filtered?.environmentId ?? null);
-      if (environmentId !== null) {
-        void chat.startChatDraft(environmentId);
-        return;
-      }
+      if (chatEnvironmentId !== null) void chat.startChatDraft(chatEnvironmentId as EnvironmentId);
+      return;
     }
     const openProjects = projects.filter((project) => project.archivedAt == null);
     const target = resolveMobileNewThreadProject({

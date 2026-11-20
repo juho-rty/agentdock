@@ -10,12 +10,15 @@ import {
   SidebarThreadModeSchema,
 } from "../../sidebarThreadMode";
 import { useProjects } from "../../state/entities";
-import { useEnvironmentIdentities } from "../../state/environments";
+import { useEnvironmentIdentities, useEnvironmentMachines } from "../../state/environments";
 import {
   filterMobileHomeProjectOptions,
+  MOBILE_CHAT_ENVIRONMENT_STORAGE_KEY,
   MOBILE_HOME_FILTERS_STORAGE_KEY,
+  MobileChatEnvironmentSchema,
   MobileHomeFiltersSchema,
   NO_MOBILE_HOME_FILTERS,
+  resolveMobileChatEnvironment,
   resolveMobileHomeFilters,
   type MobileHomeFilters,
   type MobileHomeProjectOption,
@@ -31,6 +34,7 @@ const CHATS_PROJECT_KEY = "agentdock:chats";
 export function useMobileHomeFilters() {
   const gt = useGT();
   const environments = useEnvironmentIdentities();
+  const machineById = useEnvironmentMachines();
   const projects = useProjects();
   const projectGroups = useSidebarProjectGroups();
   const [storedFilters, setFilters] = useLocalStorage<MobileHomeFilters, MobileHomeFilters>(
@@ -44,6 +48,17 @@ export function useMobileHomeFilters() {
     "agent",
     SidebarThreadModeSchema,
   );
+
+  const [storedChatEnvironmentId, setChatEnvironmentId] = useLocalStorage<
+    string | null,
+    string | null
+  >(MOBILE_CHAT_ENVIRONMENT_STORAGE_KEY, null, MobileChatEnvironmentSchema);
+  const environmentIds = environments.map((environment) => environment.environmentId);
+  const chatEnvironmentId = resolveMobileChatEnvironment({
+    stored: storedChatEnvironmentId,
+    environmentIds,
+    machineById,
+  });
 
   // Chat lists every chat thread, so it stands in for a project filter.
   const chatOption: MobileHomeProjectOption = {
@@ -60,7 +75,7 @@ export function useMobileHomeFilters() {
   );
   const filters = resolveMobileHomeFilters({
     filters: storedFilters,
-    environmentIds: environments.map((environment) => environment.environmentId),
+    environmentIds,
     projectOptions: allProjectOptions,
   });
   const projectOptions = filterMobileHomeProjectOptions(allProjectOptions, filters.environmentId);
@@ -77,5 +92,7 @@ export function useMobileHomeFilters() {
     threadMode,
     setThreadMode,
     chatKeys: chatProjectKeys(projects),
+    chatEnvironmentId,
+    setChatEnvironmentId,
   };
 }

@@ -100,6 +100,8 @@ function Home(props: { readonly onSearch: () => void }) {
         filters={filters}
         onFiltersChange={setFilters}
         threadMode={threadMode}
+        chatEnvironmentId={null}
+        onChatEnvironmentChange={() => {}}
         onThreadModeChange={setThreadMode}
         sections={buildMobileHomeSections({
           threads,

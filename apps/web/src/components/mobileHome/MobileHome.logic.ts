@@ -22,6 +22,25 @@ export function resolveMobileTab(pathname: string): MobileTab | null {
 
 export const MOBILE_HOME_FILTERS_STORAGE_KEY = "agentdock:mobile-home:filters:v1";
 export const MOBILE_HOME_WORKING_EXPANDED_STORAGE_KEY = "agentdock:mobile-home:working-expanded:v1";
+export const MOBILE_CHAT_ENVIRONMENT_STORAGE_KEY = "agentdock:mobile-home:chat-environment:v1";
+export const MobileChatEnvironmentSchema = Schema.NullOr(Schema.String);
+
+/**
+ * The phone keeps its chats on one computer, so they stay in one place and never land on a
+ * laptop that may be asleep: the one picked on the Chat tab, else the Mac mini, else the first.
+ */
+export function resolveMobileChatEnvironment(input: {
+  readonly stored: string | null;
+  readonly environmentIds: ReadonlyArray<string>;
+  readonly machineById: ReadonlyMap<string, string | null | undefined>;
+}): string | null {
+  if (input.stored !== null && input.environmentIds.includes(input.stored)) return input.stored;
+  return (
+    input.environmentIds.find((id) => input.machineById.get(id) === "mac-mini") ??
+    input.environmentIds[0] ??
+    null
+  );
+}
 
 export const MobileHomeFiltersSchema = Schema.Struct({
   environmentId: Schema.NullOr(Schema.String),
