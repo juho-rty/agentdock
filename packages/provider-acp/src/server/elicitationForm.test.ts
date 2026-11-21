@@ -80,28 +80,32 @@ describe("parseElicitationForm", () => {
       q1__other: "Only on Fridays",
     });
 
-    // A multi-select answer can carry options and free text together, so both fields stay.
+    // Antigravity puts the question in the title and pairs each multi-select with `<id>_other`.
     const multi = parseElicitationForm(
       {
         type: "object",
         properties: {
-          q0: { type: "array", title: "Databases?", items: { anyOf: [{ const: "Postgres" }] } },
-          q0__other: { type: "string", title: "Other (type your own)" },
+          q1: {
+            type: "array",
+            title: "Which databases?",
+            items: { anyOf: [{ const: "1", title: "Postgres" }] },
+          },
+          q1_other: {
+            type: "string",
+            title: "Other",
+            description: "Optional free-form answer to: Which databases?",
+          },
         },
       },
-      "Databases?",
+      "The agent has 1 questions.",
     );
     assert(multi !== undefined);
     assert.deepStrictEqual(
-      multi.questions.map((question) => [question.id, question.required]),
-      [
-        ["q0", undefined],
-        ["q0__other", false],
-      ],
+      multi.questions.map((question) => [question.id, question.header, question.question]),
+      [["q1", "Question 1", "Which databases?"]],
     );
-    assert.deepStrictEqual(multi.content({ q0: ["Postgres"], q0__other: "SQLite" }), {
-      q0: ["Postgres"],
-      q0__other: "SQLite",
-    });
+    assert.strictEqual(multi.questions[0]?.allowCustomAnswer, undefined);
+    assert.deepStrictEqual(multi.content({ q1: ["1"] }), { q1: ["1"] });
+    assert.deepStrictEqual(multi.content({ q1: "SQLite" }), { q1_other: "SQLite" });
   });
 });

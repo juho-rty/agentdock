@@ -203,18 +203,17 @@ export function parseElicitationForm(
     fields.set(id, parsed.field);
     parsedFields.push({ id, property, options: parsed.options });
   }
-  // An optional `<id>__other` text field (OMP's ask dialog) is the free-text answer to
-  // optional single choice `<id>`: ask them as one question and send custom text to the
-  // companion. Multi-select keeps both fields, since it can answer with options and text.
+  // An optional `<id>__other` (OMP's ask dialog) or `<id>_other` (Antigravity) text field is
+  // the free-text answer to optional choice `<id>`: ask them as one question and send custom
+  // text to the companion. A multi-select answer is then either options or text, since
+  // asking the companion separately doubles the question count.
   const companions = new Map<string, string>();
   for (const [id, field] of fields) {
-    const companionId = `${id}__other`;
-    if (
-      field.kind === "choice" &&
-      fields.get(companionId)?.kind === "text" &&
-      !required.has(id) &&
-      !required.has(companionId)
-    ) {
+    if (field.kind !== "choice" && field.kind !== "multiChoice") continue;
+    const companionId = [`${id}__other`, `${id}_other`].find(
+      (candidate) => fields.get(candidate)?.kind === "text",
+    );
+    if (companionId !== undefined && !required.has(id) && !required.has(companionId)) {
       companions.set(id, companionId);
     }
   }
@@ -223,10 +222,14 @@ export function parseElicitationForm(
   for (const { id, property, options } of parsedFields) {
     if (folded.has(id)) continue;
     const kind = fields.get(id)?.kind;
+    const title = text(property.title);
+    const description = text(property.description);
+    // Without a description the title is the question itself (Antigravity), and the
+    // form's message only says how many questions there are.
     questions.push({
       id,
-      header: text(property.title) ?? `Question ${questions.length + 1}`,
-      question: text(property.description) ?? message,
+      header: (description === undefined ? undefined : title) ?? `Question ${questions.length + 1}`,
+      question: description ?? title ?? message,
       options,
       ...(kind === "text" ||
       kind === "number" ||
