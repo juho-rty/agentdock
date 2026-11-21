@@ -8,6 +8,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import {
@@ -32,6 +33,10 @@ const SUMMARY_WINDOW_MINS = new Map([
   ["weekly", 7 * 24 * 60],
 ]);
 const MANUAL_REDIRECT: RequestInit = { redirect: "manual" };
+const KEYCHAIN_SIGN_IN = /applyAuthResult: email=([^\s,]+@[^\s,]+)/g;
+const KEYCHAIN_SIGN_IN_LOGS = 5;
+// The server logs its sign-in within the first few kilobytes; a session's log grows far past that.
+const KEYCHAIN_SIGN_IN_LOG_BYTES = 262_144;
 const TokenFile = Schema.Struct({
   client_id: Schema.NonEmptyString,
   client_secret: Schema.NonEmptyString,
@@ -286,6 +291,31 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
     | undefined;
   let generation = 0;
+  const logDirectory = path.join(input.profileDirectory, "antigravity-acp", "log");
+  let signInLog: { name: string; account: string } | undefined;
+
+  // A keychain login shows its account nowhere but the line the ACP server logs when it starts.
+  const keychainAccount = Effect.gen(function* () {
+    const names = (yield* fs.readDirectory(logDirectory))
+      .filter((name) => name.startsWith("acp-server-") && name.endsWith(".log"))
+      .toSorted()
+      .toReversed();
+    // Log names carry their start time, so the first sign-in found is the newest one.
+    for (const name of names.slice(0, KEYCHAIN_SIGN_IN_LOGS)) {
+      if (signInLog?.name === name) return signInLog.account;
+      const head = yield* Stream.runCollect(
+        fs.stream(path.join(logDirectory, name), { bytesToRead: KEYCHAIN_SIGN_IN_LOG_BYTES }),
+      );
+      const decoder = new TextDecoder();
+      const text = head.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
+      const email = [...text.matchAll(KEYCHAIN_SIGN_IN)].at(-1)?.[1];
+      if (email === undefined) continue;
+      const account = yield* sha256(`google-account-email\0${email.toLowerCase()}`);
+      signInLog = { name, account };
+      return account;
+    }
+    return undefined;
+  }).pipe(Effect.orElseSucceed(() => undefined));
 
   const request = (request: HttpClientRequest.HttpClientRequest) =>
     client.execute(request).pipe(
@@ -311,7 +341,12 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
             : yield* antigravityUsageCommandWindows(stdout, requestedAt).pipe(
                 Effect.orElseSucceed((): ServerProviderUsageWindow[] => []),
               );
-        if (windows.length > 0) return makeUsageLimits({ checkedAt, windows });
+        if (windows.length > 0) {
+          const limits = makeUsageLimits({ checkedAt, windows });
+          // Without this every machine signed in to one account lists its limits again.
+          const account = yield* keychainAccount;
+          return account === undefined ? limits : { ...limits, credentialFingerprint: account };
+        }
       }
       return makeUnavailableUsageLimits({
         checkedAt,
@@ -430,6 +465,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     probe,
     clear: Effect.sync(() => {
       cached = undefined;
+      signInLog = undefined;
       generation++;
     }),
   };

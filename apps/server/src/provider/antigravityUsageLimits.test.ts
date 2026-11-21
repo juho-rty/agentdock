@@ -761,4 +761,69 @@ describe("Antigravity subscription limits", () => {
       expect((yield* failed.probe).unavailable?.reason).toBe("unsupported");
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
+
+  it.effect("names one keychain account the same way on every machine", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const output = JSON.stringify({
+        command: {
+          data: {
+            groups: [
+              {
+                name: "Gemini Models",
+                buckets: [
+                  { id: "gemini-5h", window: "5h", remaining_fraction: 0.5, reset_time: "" },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      const signIn = (email: string) =>
+        `I1122 01:31:34.7 27 server.go:90] starting\nI1122 01:31:34.7 27 server_oauth.go:221] applyAuthResult: email=${email}, authMethod=consumer, quotaProject=\n`;
+      const machine = Effect.fnUntraced(function* (logs: Record<string, string>) {
+        const usage = yield* fixture({
+          missingToken: true,
+          readUsageCommand: Effect.succeed(output),
+        });
+        const directory = path.join(path.dirname(usage.tokenPath), "log");
+        yield* fs.makeDirectory(directory);
+        const write = (name: string, text: string) =>
+          fs.writeFileString(path.join(directory, name), text);
+        yield* Effect.forEach(Object.entries(logs), ([name, text]) => write(name, text));
+        return { ...usage, write };
+      });
+
+      const machineA = yield* machine({
+        "acp-server-20261121_200702-50777.log": signIn("other@example.com"),
+        "acp-server-20261122_013134-71716.log": signIn("Someone@Example.com"),
+      });
+      const machineB = yield* machine({
+        "acp-server-20261120_090000-11.log": signIn("someone@example.com"),
+        // A server that has not signed in yet leaves the previous sign-in standing.
+        "acp-server-20261122_020000-12.log": "I1122 02:00:00.1 27 server.go:90] starting\n",
+      });
+      const otherAccount = yield* machine({
+        "acp-server-20261122_013134-71716.log": signIn("other@example.com"),
+      });
+      const unknown = yield* machine({});
+
+      const first = yield* machineA.probe;
+      expect(first.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      expect((yield* machineB.probe).credentialFingerprint).toBe(first.credentialFingerprint);
+      expect((yield* otherAccount.probe).credentialFingerprint).not.toBe(
+        first.credentialFingerprint,
+      );
+      expect((yield* unknown.probe).credentialFingerprint).toBeUndefined();
+      expect(JSON.stringify(first)).not.toMatch(/example\.com/i);
+
+      // The next server to start signed in to another account, which must not stay merged.
+      yield* machineA.write("acp-server-20261122_030000-13.log", signIn("other@example.com"));
+      expect((yield* machineA.probe).credentialFingerprint).toBe(
+        (yield* otherAccount.probe).credentialFingerprint,
+      );
+      expect(machineA.requests).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
 });
