@@ -423,6 +423,14 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   blockedOnThreadWait: Schema.optional(Schema.Boolean),
   /** Absent from linked environments that predate it. */
   pendingBackgroundTasks: Schema.optional(Schema.Array(OrchestratorMcpThreadBackgroundTask)),
+  /**
+   * The request the thread waits on the user for; absent when none, and from linked
+   * environments that predate it. A linked environment's push alerts key on its id. The kind
+   * stays a string so a kind added later never fails a whole listing.
+   */
+  pendingRequest: Schema.optional(
+    Schema.Struct({ requestId: RuntimeRequestId, kind: Schema.String }),
+  ),
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   /** The linked environment's thread that delegated this one; absent otherwise. */

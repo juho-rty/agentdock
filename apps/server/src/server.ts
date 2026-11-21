@@ -694,7 +694,11 @@ const layerServerRestart = Layer.effect(
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   AgentAwarenessRelay.layer,
   HeldHooksWaker.layer,
-  WebPushNotifier.layer.pipe(Layer.provide(WebPushSubscriptions.layer)),
+  // Also announces for threads on linked environments, which the phone does not subscribe to.
+  WebPushNotifier.layer.pipe(
+    Layer.provide(WebPushSubscriptions.layer),
+    Layer.provide(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
+  ),
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,
   StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),

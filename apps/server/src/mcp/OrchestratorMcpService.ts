@@ -970,6 +970,14 @@ function listItemFromShell(
     ...threadSnooze(shell, nowMs),
     pinned: shell.pinnedAt != null,
     ...threadBackgroundWork(shell),
+    ...(shell.pendingRuntimeRequest === null
+      ? {}
+      : {
+          pendingRequest: {
+            requestId: shell.pendingRuntimeRequest.id,
+            kind: shell.pendingRuntimeRequest.kind,
+          },
+        }),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
     ...(shell.delegatedFrom == null ? {} : { delegatedFrom: shell.delegatedFrom }),

@@ -3,7 +3,13 @@
  * finishes or fails. Orchestration never waits on it: events are queued and each
  * delivery runs in its own fiber with its failures logged.
  */
-import { isListedThreadLineage, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import {
+  isListedThreadLineage,
+  OrchestratorMcpThreadListResult,
+  type EnvironmentId,
+  type OrchestratorMcpThreadListItem,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -20,6 +26,8 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import type { AgentAwarenessThread } from "../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import * as WebPushSubscriptions from "../persistence/WebPushSubscriptions.ts";
 import { DEFAULT_PHONE_RELAY_URL } from "../phone/phoneRelay.ts";
 import {
@@ -46,6 +54,7 @@ import {
   type WebPushAlertKind,
   type WebPushMessage,
 } from "./webPushAlerts.ts";
+import { makePeerAlertMemory, stepPeerAlerts, type PeerAlertMemory } from "./peerWebPushAlerts.ts";
 
 /**
  * A finished run can pick up again at once: a queued follow-up, or a background task
@@ -56,6 +65,20 @@ const COMPLETION_CONFIRM_MS = 5_000;
 /** An offline phone still gets the news within a day; older news is not worth a buzz. */
 const PUSH_TTL_SECONDS = 24 * 60 * 60;
 const PUSH_TIMEOUT = "15 seconds";
+/**
+ * How often linked environments are asked for their threads. They push nothing here, so a
+ * peer's alert reaches the phone up to this much later than a local one.
+ */
+const PEER_POLL_INTERVAL_MS = 25_000;
+/** The listing is newest-updated first, so one page holds whatever changed since the last. */
+const PEER_LIST_LIMIT = 100;
+/** The first listing reads further back, so older threads coming back into view stay quiet. */
+const PEER_SEED_MAX_PAGES = 10;
+// The narrowest modes: listing only reads.
+const PEER_CALL_LIMITS: PeerMcpClient.PeerCallLimits = {
+  runtimeMode: "approval-required",
+  interactionMode: "default",
+};
 // Apple wants a contact in every token. The relay page is where this server's phones live.
 const VAPID_SUBJECT = DEFAULT_PHONE_RELAY_URL;
 
@@ -83,6 +106,8 @@ export const layer = Layer.effectDiscard(
     const subscriptions = yield* WebPushSubscriptions.WebPushSubscriptionsRepository;
     const threads = yield* ThreadManagement.ThreadManagementService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+    const peerLinks = yield* PeerLinks.PeerLinks;
+    const peerMcp = yield* PeerMcpClient.PeerMcpClient;
     const httpClient = yield* HttpClient.HttpClient;
     const sql = yield* SqlClient.SqlClient;
     const scope = yield* Effect.scope;
@@ -338,6 +363,154 @@ export const layer = Layer.effectDiscard(
         }),
       ),
     );
+
+    /** Per linked environment; forgotten while nothing would receive its alerts. */
+    const peerMemories = new Map<EnvironmentId, PeerAlertMemory>();
+    /** Links whose last check failed, so an offline or sleeping peer logs once, not every poll. */
+    const failingPeers = new Set<EnvironmentId>();
+
+    const notePeerFailure = (environmentId: EnvironmentId, reason: string) =>
+      failingPeers.has(environmentId)
+        ? Effect.logDebug("web push could not check a linked environment", {
+            environmentId,
+            reason,
+          })
+        : Effect.sync(() => failingPeers.add(environmentId)).pipe(
+            Effect.andThen(
+              Effect.logInfo("web push stopped hearing from a linked environment", {
+                environmentId,
+                reason,
+              }),
+            ),
+          );
+
+    const listPeerPage = (environmentId: EnvironmentId, cursor: number) =>
+      peerMcp.call({
+        environmentId,
+        tool: "t3_thread_list",
+        arguments: {
+          allProjects: true,
+          includeSubagents: true,
+          limit: PEER_LIST_LIMIT,
+          ...(cursor === 0 ? {} : { cursor }),
+        },
+        limits: PEER_CALL_LIMITS,
+        success: OrchestratorMcpThreadListResult,
+      });
+
+    const listPeerThreads = Effect.fnUntraced(function* (
+      environmentId: EnvironmentId,
+      pages: number,
+    ) {
+      const threads: Array<OrchestratorMcpThreadListItem> = [];
+      let cursor: number | null = 0;
+      for (let page = 0; page < pages && cursor !== null; page++) {
+        const result: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, cursor);
+        threads.push(...result.threads);
+        cursor = result.nextCursor;
+      }
+      return threads;
+    });
+
+    /** One peer's listing; returns when a held completion wants another look. */
+    const checkPeer = Effect.fnUntraced(function* (environmentId: EnvironmentId) {
+      const memory = peerMemories.get(environmentId) ?? makePeerAlertMemory();
+      const threads = yield* listPeerThreads(
+        environmentId,
+        memory.seeded ? 1 : PEER_SEED_MAX_PAGES,
+      );
+      if (failingPeers.delete(environmentId)) {
+        yield* Effect.logInfo("web push hears from a linked environment again", { environmentId });
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const { alerts, recheckAt } = stepPeerAlerts(memory, threads, now, COMPLETION_CONFIRM_MS);
+      peerMemories.set(environmentId, memory);
+      for (const alert of alerts) {
+        const threadId = alert.threadId as ThreadId;
+        // The push names the peer and its thread, so the phone opens it there.
+        yield* deliver(
+          threadId,
+          webPushMessage({
+            kind: alert.kind,
+            environmentId,
+            threadId,
+            threadTitle: alert.threadTitle,
+          }),
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.void
+              : Effect.logWarning("web push announcement failed", {
+                  environmentId,
+                  threadId,
+                  cause: Cause.pretty(cause),
+                }),
+          ),
+          Effect.forkIn(scope),
+        );
+      }
+      return recheckAt;
+    });
+
+    /** Checks every reachable link; returns the earliest held completion's due time. */
+    const checkPeers = Effect.gen(function* () {
+      const forget = Effect.sync(() => {
+        peerMemories.clear();
+        failingPeers.clear();
+      });
+      if (!(yield* peerLinks.enabled)) return yield* forget.pipe(Effect.as(null));
+      // Nobody would hear it; the next subscriber starts from a fresh look instead of old news.
+      const now = yield* DateTime.now;
+      const rows = yield* subscriptions.listDeliverable(DateTime.formatIso(now));
+      if (rows.length === 0) return yield* forget.pipe(Effect.as(null));
+      const links = yield* peerLinks.list;
+      const linked = new Set(links.map((link) => link.environmentId));
+      for (const environmentId of peerMemories.keys()) {
+        if (!linked.has(environmentId)) peerMemories.delete(environmentId);
+      }
+      const due = yield* Effect.forEach(
+        links,
+        (link) => {
+          if (link.status !== "reachable") {
+            return notePeerFailure(link.environmentId, link.status).pipe(Effect.as(null));
+          }
+          return checkPeer(link.environmentId).pipe(
+            Effect.catch((error) =>
+              notePeerFailure(link.environmentId, error.message).pipe(Effect.as(null)),
+            ),
+          );
+        },
+        { concurrency: "unbounded" },
+      );
+      return due.reduce<number | null>(
+        (earliest, at) =>
+          at === null ? earliest : earliest === null ? at : Math.min(earliest, at),
+        null,
+      );
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : Effect.logInfo("web push could not check linked environments", {
+              cause: Cause.pretty(cause),
+            }).pipe(Effect.as(null)),
+      ),
+    );
+
+    // A held completion is looked at again when due, not a whole interval later.
+    const watchPeers = Effect.forever(
+      Effect.gen(function* () {
+        const recheckAt = yield* checkPeers;
+        const now = yield* Clock.currentTimeMillis;
+        const wait =
+          recheckAt === null
+            ? PEER_POLL_INTERVAL_MS
+            : Math.min(PEER_POLL_INTERVAL_MS, Math.max(1_000, recheckAt - now));
+        yield* Effect.sleep(wait);
+      }),
+    );
+
+    yield* forkParked(watchPeers);
 
     yield* forkParked(
       seed.pipe(
