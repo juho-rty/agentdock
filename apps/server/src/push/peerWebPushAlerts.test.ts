@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   makePeerAlertMemory,
   observePeerThreadAlert,
+  peerLastAssistantMessage,
   peerThreadPhase,
   stepPeerAlerts,
   type PeerAlertThread,
@@ -239,5 +240,24 @@ describe("stepPeerAlerts", () => {
     assert.strictEqual(memory.remembered.size, 2_000);
     assert.isFalse(memory.remembered.has("thread-0"));
     assert.isTrue(memory.remembered.has("thread-2099"));
+  });
+
+  it("takes the push excerpt from the newest assistant reply of a thread read", () => {
+    const item = (type: string, text: string | null) => ({ type, text, status: "completed" });
+    assert.strictEqual(
+      peerLastAssistantMessage({
+        items: [
+          item("user_message", "Fix the build"),
+          item("assistant_message", "Looking into it."),
+          item("tool_call", "pnpm build"),
+          item("assistant_message", "The build passes now."),
+          item("assistant_message", "  "),
+        ],
+      }),
+      "The build passes now.",
+    );
+    assert.isNull(peerLastAssistantMessage({ items: [item("user_message", "Hi")] }));
+    assert.isNull(peerLastAssistantMessage({ threads: [] }));
+    assert.isNull(peerLastAssistantMessage(null));
   });
 });

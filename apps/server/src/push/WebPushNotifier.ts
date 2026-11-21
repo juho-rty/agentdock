@@ -16,7 +16,6 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -56,7 +55,12 @@ import {
   type WebPushAlertKind,
   type WebPushMessage,
 } from "./webPushAlerts.ts";
-import { makePeerAlertMemory, stepPeerAlerts, type PeerAlertMemory } from "./peerWebPushAlerts.ts";
+import {
+  makePeerAlertMemory,
+  peerLastAssistantMessage,
+  stepPeerAlerts,
+  type PeerAlertMemory,
+} from "./peerWebPushAlerts.ts";
 
 /**
  * A finished run can pick up again at once: a queued follow-up, or a background task
@@ -391,7 +395,7 @@ export const layer = Layer.effectDiscard(
       options: {
         readonly cursor: number;
         readonly includeSubagents: boolean;
-        readonly statuses?: ReadonlyArray<"waiting">;
+        readonly statuses?: ReadonlyArray<"running" | "waiting">;
       },
     ) =>
       peerMcp.call({
@@ -424,29 +428,16 @@ export const layer = Layer.effectDiscard(
         for (const thread of result.threads) merged.set(thread.threadId, thread);
         cursor = result.nextCursor;
       }
-      const waiting: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, {
+      // A subagent with a question open is still `running`; `waiting` is a turn held by
+      // background work. Both are live, so the page stays as small as the work in flight.
+      const live: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, {
         cursor: 0,
         includeSubagents: true,
-        statuses: ["waiting"],
+        statuses: ["running", "waiting"],
       });
-      for (const thread of waiting.threads) merged.set(thread.threadId, thread);
+      for (const thread of live.threads) merged.set(thread.threadId, thread);
       return [...merged.values()];
     });
-
-    const extractPeerLastAssistantMessage = (payload: unknown): string | null => {
-      if (!Predicate.isObject(payload) || !Array.isArray(payload.items)) return null;
-      for (const item of payload.items) {
-        if (
-          Predicate.isObject(item) &&
-          item.role === "assistant" &&
-          typeof item.text === "string" &&
-          item.text.trim().length > 0
-        ) {
-          return item.text;
-        }
-      }
-      return null;
-    };
 
     const readPeerLastMessage = (environmentId: EnvironmentId, threadId: string) =>
       peerMcp
@@ -464,7 +455,7 @@ export const layer = Layer.effectDiscard(
           success: Schema.Unknown,
         })
         .pipe(
-          Effect.map(extractPeerLastAssistantMessage),
+          Effect.map(peerLastAssistantMessage),
           Effect.orElseSucceed(() => null),
         );
 

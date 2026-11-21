@@ -232,3 +232,25 @@ export function stepPeerAlerts(
   }
   return { alerts, recheckAt };
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * The newest assistant reply in a `t3_thread_read` result, for the push excerpt. Items come
+ * oldest first and name their kind in `type`.
+ */
+export function peerLastAssistantMessage(payload: unknown): string | null {
+  if (!isRecord(payload) || !Array.isArray(payload.items)) return null;
+  for (const item of payload.items.toReversed()) {
+    if (
+      isRecord(item) &&
+      item.type === "assistant_message" &&
+      typeof item.text === "string" &&
+      item.text.trim().length > 0
+    ) {
+      return item.text;
+    }
+  }
+  return null;
+}
