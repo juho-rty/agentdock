@@ -532,42 +532,49 @@ export function usePendingThreadRequests(input: {
     if (!activePendingUserInput) {
       return;
     }
-    // The option replaces the custom answer. Anything typed there is the
-    // user's text, so it goes back to the thread draft instead of vanishing.
-    const displacedAnswer =
-      readPendingUserInputDraft(draftScope).activePendingDraftAnswers[questionId]?.customAnswer;
-    const currentPrompt =
-      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "";
-    const nextPrompt = carryDisplacedCustomAnswerIntoPrompt(currentPrompt, displacedAnswer);
-    if (nextPrompt !== currentPrompt) {
-      setComposerDraftPrompt(composerDraftTarget, nextPrompt);
-      displacedAnswers.current.push({
-        draft: displacedDraftKey,
-        key: `${activePendingRequestKey}:${questionId}`,
-        text: displacedAnswer ?? "",
-      });
-      toastManager.add({
-        type: "info",
-        title: m(msg("Your typed text was set aside")),
-        description: m(msg("It will be back in the composer once the question is answered.")),
-        data: { threadRef: activeThreadId ? { environmentId, threadId: activeThreadId } : null },
-      });
-      if (activeThreadId) {
-        const store = useComposerDraftStore.getState();
-        const questionTarget = questionAttachmentDraftId(
-          environmentId,
-          activeThreadId,
-          activePendingUserInput.requestId,
-          questionId,
-        );
-        store.addThreadContexts(
-          composerDraftTarget,
-          threadContextsReferencedByAnswer(
-            displacedAnswer ?? "",
-            store.getComposerDraft(questionTarget)?.threadContexts ?? [],
-          ),
-          { appendReference: false },
-        );
+    const targetQuestion = activePendingUserInput.questions.find(
+      (entry) => entry.id === questionId,
+    );
+    const retainsCustomAnswer =
+      targetQuestion?.multiSelect === true && targetQuestion.allowCustomAnswer !== false;
+    if (!retainsCustomAnswer) {
+      // Single-select options replace the custom answer. Anything typed there is
+      // the user's text, so it goes back to the thread draft instead of vanishing.
+      const displacedAnswer =
+        readPendingUserInputDraft(draftScope).activePendingDraftAnswers[questionId]?.customAnswer;
+      const currentPrompt =
+        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "";
+      const nextPrompt = carryDisplacedCustomAnswerIntoPrompt(currentPrompt, displacedAnswer);
+      if (nextPrompt !== currentPrompt) {
+        setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+        displacedAnswers.current.push({
+          draft: displacedDraftKey,
+          key: `${activePendingRequestKey}:${questionId}`,
+          text: displacedAnswer ?? "",
+        });
+        toastManager.add({
+          type: "info",
+          title: m(msg("Your typed text was set aside")),
+          description: m(msg("It will be back in the composer once the question is answered.")),
+          data: { threadRef: activeThreadId ? { environmentId, threadId: activeThreadId } : null },
+        });
+        if (activeThreadId) {
+          const store = useComposerDraftStore.getState();
+          const questionTarget = questionAttachmentDraftId(
+            environmentId,
+            activeThreadId,
+            activePendingUserInput.requestId,
+            questionId,
+          );
+          store.addThreadContexts(
+            composerDraftTarget,
+            threadContextsReferencedByAnswer(
+              displacedAnswer ?? "",
+              store.getComposerDraft(questionTarget)?.threadContexts ?? [],
+            ),
+            { appendReference: false },
+          );
+        }
       }
     }
     setPendingUserInputAnswersByRequestId((existing) => {
@@ -588,8 +595,10 @@ export function usePendingThreadRequests(input: {
         },
       };
     });
-    promptRef.current = "";
-    composerRef.current?.resetCursorState({ cursor: 0 });
+    if (!retainsCustomAnswer) {
+      promptRef.current = "";
+      composerRef.current?.resetCursorState({ cursor: 0 });
+    }
   };
   const onSelectActivePendingUserInputOptionStable = useStableCallback(
     onSelectActivePendingUserInputOption,

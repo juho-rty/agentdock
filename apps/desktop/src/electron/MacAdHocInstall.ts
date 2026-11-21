@@ -37,6 +37,7 @@ set -u
 pid="$1"; zip="$2"; app="$3"
 open() { "\${AGENTDOCK_SWAP_OPEN:-/usr/bin/open}" "$@"; }
 for _ in $(seq 1 600); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$pid" 2>/dev/null; then exit 1; fi
 work="$(mktemp -d "\${TMPDIR:-/tmp}/agentdock-update.XXXXXX")" || { open "$app"; exit 1; }
 cleanup() { rm -rf "$work"; rm -f "$0"; rmdir "$(dirname "$0")" 2>/dev/null; }
 trap cleanup EXIT

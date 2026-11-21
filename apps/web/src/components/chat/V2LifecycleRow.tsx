@@ -637,11 +637,38 @@ export function FreshSessionRow() {
   return <TimelineSystemDivider label={gt("New session")} icon={EraserIcon} />;
 }
 
+/** Formats raw model-option slugs when an effort value is no longer in the active provider's choices. */
+function formatModelSwitchEffortLabel(
+  effort: string | undefined,
+  gt: ReturnType<typeof useGT>,
+): string | undefined {
+  if (effort === undefined) return undefined;
+  switch (effort) {
+    case "none":
+      return gt("None", { $context: "reasoning effort level" });
+    case "minimal":
+      return gt("Minimal", { $context: "reasoning effort level" });
+    case "low":
+      return gt("Low", { $context: "reasoning effort level" });
+    case "medium":
+      return gt("Medium", { $context: "reasoning effort level" });
+    case "high":
+      return gt("High", { $context: "reasoning effort level" });
+    case "xhigh":
+      return gt("Extra High", { $context: "reasoning effort level" });
+    case "max":
+      return gt("Max", { $context: "reasoning effort level" });
+    default:
+      return effort;
+  }
+}
+
 /** A same-harness model or effort change. Shows only what changed. */
 export function ModelSwitchRow(props: {
   readonly environmentId: EnvironmentId;
   readonly modelSwitch: OrchestrationV2ModelSwitch;
 }) {
+  const gt = useGT();
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(props.environmentId)) ??
     EMPTY_SERVER_PROVIDERS;
@@ -651,7 +678,9 @@ export function ModelSwitchRow(props: {
     const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
     const model = provider?.models.find((candidate) => candidate.slug === selection.model);
     const modelName = model ? getTriggerDisplayModelName(model, provider?.driver) : selection.model;
-    return [change.modelChanged ? modelName : null, effort].filter(Boolean).join(" ");
+    return [change.modelChanged ? modelName : null, formatModelSwitchEffortLabel(effort, gt)]
+      .filter(Boolean)
+      .join(" ");
   };
   const { from, to } = props.modelSwitch;
   return (

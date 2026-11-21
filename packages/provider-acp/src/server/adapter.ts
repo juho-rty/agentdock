@@ -618,6 +618,12 @@ export interface AcpAdapterV2Flavor {
   readonly terminateRuntimeProcessGroupOnInterrupt?: boolean;
   readonly preserveRuntimeOnSettledInterrupt?: boolean;
   readonly enablePostSettleContinuation?: boolean;
+  /** Quiet window before a continuation turn closes once an assistant reply has been emitted. */
+  readonly continuationFinalizeDebounce?: Duration.Input;
+  /** Longer quiet window while a continuation turn has only seen tools or thoughts and awaits its reply. */
+  readonly continuationWorkingFinalizeDebounce?: Duration.Input;
+  /** Offer a post-settle continuation as soon as thoughts or new tool calls arrive, before completion. */
+  readonly wakeOnPostSettleActivity?: boolean;
   /** Settle on native idle after the accepted user echo, only on negotiated ACP v2. */
   readonly followAgentWorkState?: boolean;
   /**
@@ -1546,6 +1552,8 @@ interface ActiveAcpTurn {
   /** Clock millis of the prompt's last progress, for `promptInactivityTimeout`. */
   lastProgressAt: number;
   inactivityWatchdog: Fiber.Fiber<void> | undefined;
+  /** True after an assistant reply until another thought or tool update arrives. */
+  assistantRespondedSinceLastWork: boolean;
 }
 
 type AcpRuntimeTeardownState =
@@ -1610,7 +1618,10 @@ export function acpPostSettleWakeEvidence(
 /** Still-running tool updates can outlast the quiet window; they must not offer completion wakes. */
 export function acpPostSettleContinuationOfferEvidence(
   notification: EffectAcpSchema.SessionNotification,
-  flavor: Pick<AcpAdapterV2Flavor, "extractBackgroundToolMutation" | "normalizeToolCall"> = {},
+  flavor: Pick<
+    AcpAdapterV2Flavor,
+    "extractBackgroundToolMutation" | "normalizeToolCall" | "wakeOnPostSettleActivity"
+  > = {},
 ): boolean {
   if (!acpPostSettleWakeEvidence(notification, flavor)) {
     return false;
@@ -1619,11 +1630,29 @@ export function acpPostSettleContinuationOfferEvidence(
   if (update.sessionUpdate === "agent_message_chunk") {
     return (acpContentBlockDisplayText(update.content)?.trim().length ?? 0) > 0;
   }
+  if (update.sessionUpdate === "agent_message") {
+    return (update.content ?? []).some(
+      (content) => (acpContentBlockDisplayText(content)?.trim().length ?? 0) > 0,
+    );
+  }
+  if (
+    flavor.wakeOnPostSettleActivity === true &&
+    (update.sessionUpdate === "agent_thought_chunk" || update.sessionUpdate === "agent_thought")
+  ) {
+    return update.sessionUpdate === "agent_thought_chunk"
+      ? (acpContentBlockDisplayText(update.content)?.trim().length ?? 0) > 0
+      : (update.content ?? []).some(
+          (content) => (acpContentBlockDisplayText(content)?.trim().length ?? 0) > 0,
+        );
+  }
   if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
     return parseSessionUpdateEvent(notification).events.some((event) => {
       if (event._tag !== "ToolCallUpdated") return false;
       // Grok monitor start ACKs say completed while the task is still running.
       const toolCall = flavor.normalizeToolCall?.(event.toolCall) ?? event.toolCall;
+      if (flavor.wakeOnPostSettleActivity === true && update.sessionUpdate === "tool_call") {
+        return true;
+      }
       return toolCall.status === "completed" || toolCall.status === "failed";
     });
   }
@@ -2544,6 +2573,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             runtimeGeneration,
             Effect.gen(function* () {
               yield* Ref.set(runtimeRestartRequired, true);
+              agentRequests.clear();
               if (!followsAgentWorkState) return;
               agentWork = { sessionUpdate: "state_update", state: "idle", stopReason: "error" };
               for (const child of nativeChildren.values()) {
@@ -4021,6 +4051,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           /Monitor\s+["']?[0-9a-f-]{8,}/i.test(text) && /ended/i.test(text);
 
         const hasDeferredBackgroundWork = (context: ActiveAcpTurn): boolean => {
+          if (agentRequests.size > 0) return true;
           if (context.awaitingBackgroundHydration.size > 0) return true;
           if (context.pendingInjectedReport.size > 0) return true;
           for (const [taskId, toolCallId] of context.toolCallIdsByBackgroundTaskId) {
@@ -5298,7 +5329,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         });
 
         const awaitRequestTurn = Effect.fnUntraced(function* (generation: number) {
-          if (!followsAgentWorkState) return true;
+          if (
+            !followsAgentWorkState &&
+            (!postSettleContinuationEnabled || continuationRequests === undefined)
+          ) {
+            return true;
+          }
           while (true) {
             const waiting = yield* runRuntimeCallbackAtGeneration(
               generation,
@@ -5321,7 +5357,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           (generation: number) =>
           <A, E, R>(effect: Effect.Effect<A, E, R>) =>
             Effect.suspend(() =>
-              !followsAgentWorkState
+              !followsAgentWorkState && !postSettleContinuationEnabled
                 ? effect
                 : Effect.acquireUseRelease(
                     runRuntimeCallbackAtGeneration(
@@ -5339,7 +5375,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                         Effect.gen(function* () {
                           if (Option.isSome(token)) agentRequests.delete(token.value);
                           const context = yield* Ref.get(activeTurn);
-                          if (context !== null) yield* settleIdleWork(context);
+                          if (context !== null) {
+                            yield* settleIdleWork(context);
+                            yield* rearmDeferredFinalize(context);
+                          }
                         }),
                       ).pipe(Effect.asVoid),
                   ),
@@ -5772,6 +5811,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             case "agent_message_chunk": {
               const text = acpContentBlockDisplayText(update.content);
               if (text !== undefined) {
+                if (text.trim().length > 0) {
+                  context.assistantRespondedSinceLastWork = true;
+                }
                 const startsNewAssistantSegment = context.assistant.current === null;
                 if (context.pendingInjectedReport.size > 0) {
                   const reportedTaskIds = [...context.pendingInjectedReport];
@@ -5791,6 +5833,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             case "agent_thought_chunk": {
               const text = acpContentBlockDisplayText(update.content);
               if (text !== undefined) {
+                if (text.trim().length > 0) {
+                  context.assistantRespondedSinceLastWork = false;
+                }
                 yield* appendText(context, "reasoning", text, update.messageId);
               }
               break;
@@ -5805,6 +5850,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   return display === undefined ? [] : [display];
                 })
                 .join("\n");
+              if (text.trim().length > 0) {
+                if (update.sessionUpdate === "agent_message") {
+                  context.assistantRespondedSinceLastWork = true;
+                } else if (update.sessionUpdate === "agent_thought") {
+                  context.assistantRespondedSinceLastWork = false;
+                }
+              }
               yield* replaceText(
                 context,
                 update.sessionUpdate === "user_message"
@@ -5818,6 +5870,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               break;
             }
             case "tool_call_content_chunk": {
+              context.assistantRespondedSinceLastWork = false;
               const text =
                 update.content.type === "content"
                   ? acpContentBlockDisplayText(update.content.content)
@@ -5939,6 +5992,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               const parsed = parseSessionUpdateEvent(notification);
               for (const event of parsed.events) {
                 if (event._tag === "ToolCallUpdated") {
+                  context.assistantRespondedSinceLastWork = false;
                   yield* emitTool(context, event.toolCall, undefined, event.rawPayload);
                 } else if (event._tag === "PlanUpdated") {
                   yield* emitPlan(context, event.payload, update.sessionUpdate !== "plan");
@@ -6941,16 +6995,20 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
                 request: EffectAcpSchema.RequestPermissionRequest = params,
               ) => (flavor.permissionDisposition ?? acpPermissionDisposition)(policy, request);
-              if (followsAgentWorkState && dispositionFor(latestRuntimePolicy) === "ask") {
+              const canAttachContinuationTurn =
+                followsAgentWorkState ||
+                (postSettleContinuationEnabled && continuationRequests !== undefined);
+              if (canAttachContinuationTurn && dispositionFor(latestRuntimePolicy) === "ask") {
                 if (!(yield* awaitRequestTurn(handlerGeneration)))
                   return { outcome: { outcome: "cancelled" } } as const;
               }
               const admitted = yield* runRuntimeCallbackAtGeneration(
                 handlerGeneration,
                 Effect.gen(function* () {
-                  const context = followsAgentWorkState
-                    ? yield* Ref.get(activeTurn)
-                    : yield* activeContext;
+                  const context =
+                    followsAgentWorkState || postSettleContinuationEnabled
+                      ? yield* Ref.get(activeTurn)
+                      : yield* activeContext;
                   // Kiro sends the tool's kind on its `tool_call` and leaves it
                   // off the permission request for that call; take it from the
                   // tool already seen under the same id so policy can tell a
@@ -6962,6 +7020,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       ? { ...params, toolCall: { ...params.toolCall, kind: knownKind } }
                       : params,
                   );
+                  if (
+                    context === null &&
+                    postSettleContinuationEnabled &&
+                    (disposition === "allow" || disposition === "deny") &&
+                    !(yield* Ref.get(stoppedRunQuarantine)) &&
+                    params.sessionId === (yield* Ref.get(activeSessionId))
+                  ) {
+                    yield* offerContinuationRun(params.sessionId);
+                  }
                   if (disposition === "allow") {
                     const optionId = selectAutoApprovedPermissionOption(answerableParams);
                     return {
@@ -7089,14 +7156,25 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 const mcpApprovalDisposition = yield* runRuntimeCallbackAtGeneration(
                   handlerGeneration,
                   Effect.gen(function* () {
-                    const context = yield* activeContext;
+                    const context =
+                      followsAgentWorkState || postSettleContinuationEnabled
+                        ? yield* Ref.get(activeTurn)
+                        : yield* activeContext;
                     const disposition = acpMcpToolApprovalElicitationDisposition(
-                      context.input.runtimePolicy,
+                      context?.input.runtimePolicy ?? latestRuntimePolicy,
                       params,
                       transportRequestId,
                     );
                     if (disposition === undefined || disposition === "ask") {
                       return disposition;
+                    }
+                    if (
+                      context === null &&
+                      postSettleContinuationEnabled &&
+                      !(yield* Ref.get(stoppedRunQuarantine))
+                    ) {
+                      const sessionId = yield* Ref.get(activeSessionId);
+                      if (sessionId !== null) yield* offerContinuationRun(sessionId);
                     }
                     const nativeResponseAcknowledgement = yield* Deferred.make<
                       void,
@@ -8293,10 +8371,17 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (!flavor.deferFinalizeForBackgroundWork) return;
           if (!context.promptSettled || context.finalized || context.interrupted) return;
           if (hasDeferredBackgroundWork(context)) return;
+          const isContinuation = acpIsProviderContinuationMessage(context.input.message);
+          const debounce = isContinuation
+            ? !context.assistantRespondedSinceLastWork &&
+              flavor.continuationWorkingFinalizeDebounce !== undefined
+              ? flavor.continuationWorkingFinalizeDebounce
+              : (flavor.continuationFinalizeDebounce ?? ACP_DEFERRED_FINALIZE_DEBOUNCE)
+            : ACP_DEFERRED_FINALIZE_DEBOUNCE;
           context.backgroundFinalizeGeneration += 1;
           const generation = context.backgroundFinalizeGeneration;
           yield* Effect.gen(function* () {
-            yield* Effect.sleep(ACP_DEFERRED_FINALIZE_DEBOUNCE);
+            yield* Effect.sleep(debounce);
             if (
               context.finalized ||
               context.interrupted ||
@@ -8308,10 +8393,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             const status = context.promptSettledStatus ?? "completed";
             yield* finalizeTurn(context, status);
           }).pipe(Effect.forkIn(sessionScope), Effect.asVoid);
-          yield* (
-            options.testHooks?.onDeferredFinalizeScheduled?.(ACP_DEFERRED_FINALIZE_DEBOUNCE) ??
-              Effect.void
-          );
+          yield* options.testHooks?.onDeferredFinalizeScheduled?.(debounce) ?? Effect.void;
         });
 
         const promptInactivityPaused = Effect.fn("AcpAdapterV2.promptInactivityPaused")(function* (
@@ -8752,6 +8834,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               nativePromptId: undefined,
               lastProgressAt: 0,
               inactivityWatchdog: undefined,
+              assistantRespondedSinceLastWork: false,
             };
             const carryover = yield* Ref.getAndSet(carryoverSubagents, null);
             let rehydratedCarryoverSubagents: ReadonlyArray<ActiveAcpSubagent> = [];

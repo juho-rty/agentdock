@@ -153,6 +153,31 @@ describe("togglePendingUserInputOptionSelection", () => {
       first,
     );
   });
+
+  it("keeps checked multi-select options alongside a custom answer when custom text is allowed", () => {
+    const multiWithOther = {
+      id: "databases",
+      header: "Databases",
+      question: "Which databases?",
+      options: [
+        { value: "1", label: "Postgres" },
+        { value: "2", label: "Redis" },
+      ],
+      multiSelect: true,
+    } as const;
+    const withOption = togglePendingUserInputOptionSelection(multiWithOther, undefined, "1");
+    const withBoth = setPendingUserInputCustomAnswer(multiWithOther, withOption, "SQLite");
+    expect(isPendingUserInputOptionSelected(multiWithOther, withBoth, "1")).toBe(true);
+    expect(resolvePendingUserInputAnswer(multiWithOther, withBoth)).toEqual(["1", "SQLite"]);
+
+    const toggledSecond = togglePendingUserInputOptionSelection(multiWithOther, withBoth, "2");
+    expect(toggledSecond.customAnswer).toBe("SQLite");
+    expect(resolvePendingUserInputAnswer(multiWithOther, toggledSecond)).toEqual([
+      "1",
+      "2",
+      "SQLite",
+    ]);
+  });
 });
 
 describe("setPendingUserInputCustomAnswer", () => {

@@ -238,6 +238,10 @@ const make = Effect.gen(function* () {
     state.anchor = { trayBounds, cursor: Electron.screen.getCursorScreenPoint() };
     const existing = livePopover();
     const popover = existing ?? (yield* createPopover);
+    if (existing !== null) {
+      const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
+      popover.setBackgroundColor(shouldUseDarkColors ? "#000000" : "#ffffff");
+    }
     yield* watchMain;
     place(popover);
     const reveal = () => {

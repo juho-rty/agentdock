@@ -197,11 +197,26 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               ? null
               : { x: touch.clientX, y: touch.clientY };
         }}
+        onTouchMove={(event) => {
+          if (
+            swipeRef.current !== null &&
+            (event.touches.length !== 1 || zoomableImageRef.current?.zoomed() === true)
+          ) {
+            swipeRef.current = null;
+          }
+        }}
         onTouchEnd={(event) => {
           const start = swipeRef.current;
           const touch = event.changedTouches[0];
           swipeRef.current = null;
-          if (start === null || touch === undefined || event.touches.length > 0) return;
+          if (
+            start === null ||
+            touch === undefined ||
+            event.touches.length > 0 ||
+            zoomableImageRef.current?.zoomed() === true
+          ) {
+            return;
+          }
           if (event.target instanceof HTMLVideoElement) return;
           const dx = touch.clientX - start.x;
           const dy = touch.clientY - start.y;

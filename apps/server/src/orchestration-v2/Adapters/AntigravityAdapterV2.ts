@@ -286,8 +286,12 @@ export function makeAntigravityAcpAdapterFlavor(
     promptInactivityTimeout: "15 minutes",
     // run_command moves a command past WaitMsBeforeAsync into a background task and the turn
     // ends. When the task finishes, Antigravity wakes the agent on the root session with no
-    // prompt open, so that work is taken as a continuation run; the debounce ends it.
+    // prompt open, so that work is taken as a continuation run; High-thinking pauses between
+    // tool steps can exceed 30s before any thought chunk arrives, while a spoken reply settles fast.
     enablePostSettleContinuation: true,
+    wakeOnPostSettleActivity: true,
+    continuationWorkingFinalizeDebounce: "90 seconds",
+    continuationFinalizeDebounce: "5 seconds",
     deferFinalizeForBackgroundWork: true,
     // 1.4.5 returns the root trajectory's Gemini usageMetadata delta; 1.4.1 returns none.
     reportsPerTurnPromptUsage: true,

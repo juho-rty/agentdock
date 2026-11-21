@@ -95,4 +95,8 @@ describe.skipIf(NodeOS.type() !== "Darwin")("MAC_SWAP_SCRIPT", () => {
     expect(result.status).toBe(1);
     expect(NodeFS.readFileSync(NodePath.join(app, "Contents", "version"), "utf8")).toBe("old");
   });
+
+  it("aborts before moving the bundle if the old process is still alive after waiting", () => {
+    expect(MAC_SWAP_SCRIPT).toContain('if kill -0 "$pid" 2>/dev/null; then exit 1; fi');
+  });
 });

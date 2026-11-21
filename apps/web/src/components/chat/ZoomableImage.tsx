@@ -2,6 +2,7 @@ import { useGT } from "gt-react";
 import { useImperativeHandle, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import { flushSync } from "react-dom";
 
+import { useStableCallback } from "../../hooks/useStableCallback";
 import {
   onWindowControlsOverlayGeometryChange,
   windowControlsOverlayHeight,
@@ -141,40 +142,47 @@ export function ZoomableImage({
     viewport.scrollTop = anchorY * clamped - (clientY - resized.top);
   };
 
-  const attachViewport = (viewport: HTMLDivElement) => {
+  const handleViewportWheel = useStableCallback((viewport: HTMLDivElement, event: WheelEvent) => {
+    if (!event.ctrlKey || event.deltaY === 0) return;
+    event.preventDefault();
+    const delta =
+      event.deltaY *
+      (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+    changeZoom(zoom * Math.exp(-delta * 0.01), {
+      x: event.clientX,
+      y: event.clientY,
+    });
+  });
+
+  // Two fingers zoom the picture itself; otherwise the browser would zoom the whole page.
+  const spreadTouches = (touches: TouchList) =>
+    Math.hypot(
+      touches[0]!.clientX - touches[1]!.clientX,
+      touches[0]!.clientY - touches[1]!.clientY,
+    );
+
+  const handleViewportTouchStart = useStableCallback((event: TouchEvent) => {
+    pinchRef.current =
+      event.touches.length === 2 ? { distance: spreadTouches(event.touches), zoom } : null;
+  });
+
+  const handleViewportTouchMove = useStableCallback((event: TouchEvent) => {
+    const pinch = pinchRef.current;
+    if (pinch === null || event.touches.length !== 2) return;
+    event.preventDefault();
+    changeZoom((pinch.zoom * spreadTouches(event.touches)) / (pinch.distance || 1), {
+      x: (event.touches[0]!.clientX + event.touches[1]!.clientX) / 2,
+      y: (event.touches[0]!.clientY + event.touches[1]!.clientY) / 2,
+    });
+  });
+
+  const attachViewport = useStableCallback((viewport: HTMLDivElement) => {
     viewportRef.current = viewport;
     // Trackpad pinch arrives as a ctrlKey wheel; plain wheels pan through native overflow scrolling.
     // React's onWheel is passive and cannot stop the browser's own page zoom.
-    const wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey || event.deltaY === 0) return;
-      event.preventDefault();
-      const delta =
-        event.deltaY *
-        (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
-      changeZoom(zoom * Math.exp(-delta * 0.01), {
-        x: event.clientX,
-        y: event.clientY,
-      });
-    };
-    // Two fingers zoom the picture itself; otherwise the browser would zoom the whole page.
-    const spread = (touches: TouchList) =>
-      Math.hypot(
-        touches[0]!.clientX - touches[1]!.clientX,
-        touches[0]!.clientY - touches[1]!.clientY,
-      );
-    const touchStart = (event: TouchEvent) => {
-      pinchRef.current =
-        event.touches.length === 2 ? { distance: spread(event.touches), zoom } : null;
-    };
-    const touchMove = (event: TouchEvent) => {
-      const pinch = pinchRef.current;
-      if (pinch === null || event.touches.length !== 2) return;
-      event.preventDefault();
-      changeZoom((pinch.zoom * spread(event.touches)) / (pinch.distance || 1), {
-        x: (event.touches[0]!.clientX + event.touches[1]!.clientX) / 2,
-        y: (event.touches[0]!.clientY + event.touches[1]!.clientY) / 2,
-      });
-    };
+    const wheel = (event: WheelEvent) => handleViewportWheel(viewport, event);
+    const touchStart = (event: TouchEvent) => handleViewportTouchStart(event);
+    const touchMove = (event: TouchEvent) => handleViewportTouchMove(event);
     viewport.addEventListener("wheel", wheel, { passive: false });
     viewport.addEventListener("touchstart", touchStart, { passive: true });
     viewport.addEventListener("touchmove", touchMove, { passive: false });
@@ -184,7 +192,7 @@ export function ZoomableImage({
       viewport.removeEventListener("touchmove", touchMove);
       viewportRef.current = null;
     };
-  };
+  });
 
   return (
     <div className="min-w-0">
@@ -205,13 +213,15 @@ export function ZoomableImage({
         }}
         onClick={(event) => {
           // Pointer capture emits a click after dragging; preserve zoom.
-          if (suppressClickRef.current || event.detail > 1) return;
-          // A finger zooms on the second tap; one tap is too easy to make by accident.
+          if (suppressClickRef.current) return;
+          // A finger zooms on the second tap (where detail can be 2); mouse ignores double-click's second click.
           if ((event.nativeEvent as PointerEvent).pointerType === "touch") {
             const previous = lastTapRef.current;
             lastTapRef.current = event.timeStamp;
             if (event.timeStamp - previous > 320) return;
             lastTapRef.current = 0;
+          } else if (event.detail > 1) {
+            return;
           }
           changeZoom(zoom > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
         }}

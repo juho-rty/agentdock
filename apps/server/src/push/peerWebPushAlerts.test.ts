@@ -230,4 +230,14 @@ describe("stepPeerAlerts", () => {
       [{ threadId: "thread-1", threadTitle: "Fix the build", kind: "input" }],
     );
   });
+
+  it("bounds remembered thread entries so long-running servers do not grow without limit", () => {
+    const many = Array.from({ length: 2_100 }, (_, index) =>
+      thread({ threadId: `thread-${index}`, latestRunId: `run-${index}` }),
+    );
+    const memory = seeded(many);
+    assert.strictEqual(memory.remembered.size, 2_000);
+    assert.isFalse(memory.remembered.has("thread-0"));
+    assert.isTrue(memory.remembered.has("thread-2099"));
+  });
 });

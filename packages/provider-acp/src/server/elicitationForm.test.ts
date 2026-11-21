@@ -107,5 +107,9 @@ describe("parseElicitationForm", () => {
     assert.strictEqual(multi.questions[0]?.allowCustomAnswer, undefined);
     assert.deepStrictEqual(multi.content({ q1: ["1"] }), { q1: ["1"] });
     assert.deepStrictEqual(multi.content({ q1: "SQLite" }), { q1_other: "SQLite" });
+    assert.deepStrictEqual(multi.content({ q1: ["1", "SQLite"] }), {
+      q1: ["1"],
+      q1_other: "SQLite",
+    });
   });
 });

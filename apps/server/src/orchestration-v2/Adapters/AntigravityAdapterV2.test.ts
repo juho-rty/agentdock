@@ -36,6 +36,7 @@ import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSession
 import { makeAntigravityAcpRuntime } from "../../provider/acp/AntigravityAcpSupport.ts";
 import { normalizeAntigravitySessionUpdate } from "../../provider/acp/AntigravityProtocol.ts";
 import { ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE } from "../../provider/antigravityAuthSupport.ts";
+import { acpPostSettleContinuationOfferEvidence } from "@t3tools/provider-acp/server/adapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import {
@@ -69,7 +70,39 @@ function permissionRequest(
 describe("AntigravityAdapterV2 flavor", () => {
   it("takes the agent's work after a background command wakes it as a continuation", () => {
     assert.strictEqual(flavor.enablePostSettleContinuation, true);
+    assert.strictEqual(flavor.wakeOnPostSettleActivity, true);
+    assert.strictEqual(flavor.continuationWorkingFinalizeDebounce, "90 seconds");
+    assert.strictEqual(flavor.continuationFinalizeDebounce, "5 seconds");
     assert.strictEqual(flavor.deferFinalizeForBackgroundWork, true);
+    assert.strictEqual(
+      acpPostSettleContinuationOfferEvidence(
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: "Checking background task output..." },
+          },
+        },
+        flavor,
+      ),
+      true,
+    );
+    assert.strictEqual(
+      acpPostSettleContinuationOfferEvidence(
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "cmd-wake-1",
+            title: "Run command",
+            kind: "execute",
+            status: "pending",
+          },
+        },
+        flavor,
+      ),
+      true,
+    );
   });
 
   it("keeps a successful subagent launch running until the parent turn becomes idle", () => {
@@ -1276,6 +1309,164 @@ describe("AntigravityAdapterV2 session system prompt", () => {
           assert.notInclude(append, "systemPrompt");
           assert.include(sent, "<pull_request_linking>");
         }
+      }).pipe(Effect.provide(layerSession)),
+  );
+});
+
+describe("AntigravityAdapterV2 post-settle wake permissions", () => {
+  it.effect(
+    "auto-approves post-settle permission requests under full-access and offers a continuation run",
+    () =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const crypto = yield* SecureRandom.SecureRandom;
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+        let requestPermission: Parameters<RuntimeService["handleRequestPermission"]>[0] | undefined;
+        let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+        const offeredContinuations: Array<{ readonly threadId: ThreadId }> = [];
+        const instanceId = ProviderInstanceId.make("antigravity-wake-permission-test");
+        const threadId = ThreadId.make("thread-antigravity-wake-permission");
+        const adapter = yield* makeAntigravityAdapterV2({
+          instanceId,
+          selfInvocation: yield* resolveSelfInvocation(),
+          continuationRequests: {
+            offer: (request: { readonly threadId: ThreadId }) =>
+              Effect.sync(() => {
+                offeredContinuations.push({ threadId: request.threadId });
+              }),
+          } as never,
+          makeRuntime: (input) =>
+            makeAntigravityAcpRuntime({
+              ...input,
+              childProcessSpawner,
+              spawn: {
+                command: process.execPath,
+                args: [mockAgentPath],
+                cwd: input.cwd,
+                env: { T3_ACP_ANTIGRAVITY: "1" },
+              },
+            }).pipe(
+              Effect.provideService(SecureRandom.SecureRandom, crypto),
+              Effect.map((runtime): RuntimeService => ({
+                ...runtime,
+                handleSessionUpdate: (handler) =>
+                  Effect.sync(() => {
+                    sessionUpdate = handler;
+                  }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+                handleRequestPermission: (handler) =>
+                  Effect.sync(() => {
+                    requestPermission = handler;
+                  }).pipe(Effect.andThen(runtime.handleRequestPermission(handler))),
+                prompt: () =>
+                  Effect.gen(function* () {
+                    if (sessionUpdate !== undefined) {
+                      yield* sessionUpdate({
+                        sessionId: "mock-session-1",
+                        update: {
+                          sessionUpdate: "agent_message_chunk",
+                          content: { type: "text", text: "Running background check..." },
+                        },
+                      });
+                    }
+                    return { stopReason: "end_turn" as const };
+                  }),
+              })),
+            ),
+          withProcess: (_stop, task) => task,
+          defaultModel: Effect.undefined,
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "gemini-test-low" } as const;
+        const session = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-antigravity-wake-permission"),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* session.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const now = yield* DateTime.now;
+        yield* session.startTurn({
+          appThread: {
+            createdBy: "user",
+            creationSource: "web",
+            id: threadId,
+            projectId: ProjectId.make("project-antigravity-wake-permission"),
+            title: "Antigravity wake permission",
+            providerInstanceId: instanceId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: process.cwd(),
+            activeProviderThreadId: providerThread.id,
+            lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            lastVisitedAt: null,
+            deletedAt: null,
+          },
+          threadId,
+          runId: RunId.make("run-antigravity-wake-permission"),
+          runOrdinal: 1,
+          providerTurnOrdinal: 1,
+          attemptId: RunAttemptId.make("attempt-antigravity-wake-permission"),
+          rootNodeId: NodeId.make("node-antigravity-wake-permission"),
+          providerThread,
+          message: {
+            createdBy: "user",
+            creationSource: "web",
+            messageId: MessageId.make("message-antigravity-wake-permission"),
+            text: "capture final screenshots",
+            attachments: [],
+          },
+          modelSelection,
+          runtimePolicy,
+        });
+        yield* session.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "provider_turn.updated" && event.providerTurn.status === "completed",
+          ),
+          Stream.runHead,
+        );
+        if (requestPermission === undefined) {
+          return yield* Effect.die("Antigravity sessions must wire permission handlers");
+        }
+        const permissionOutcome = yield* requestPermission(
+          {
+            sessionId: "mock-session-1",
+            options: [
+              { optionId: "allow_once", name: "Allow once", kind: "allow_once" },
+              { optionId: "reject_once", name: "Deny", kind: "reject_once" },
+            ],
+            toolCall: {
+              toolCallId: "cmd-godot-capture",
+              title: "Run command?",
+              kind: "execute",
+            },
+          },
+          { requestId: "perm-wake-1", method: "session/request_permission" },
+        );
+        assert.deepStrictEqual(permissionOutcome, {
+          outcome: { outcome: "selected", optionId: "allow_once" },
+        });
+        assert.deepStrictEqual(offeredContinuations, [{ threadId }]);
       }).pipe(Effect.provide(layerSession)),
   );
 });

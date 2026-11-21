@@ -16,6 +16,8 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
@@ -384,15 +386,23 @@ export const layer = Layer.effectDiscard(
             ),
           );
 
-    const listPeerPage = (environmentId: EnvironmentId, cursor: number) =>
+    const listPeerPage = (
+      environmentId: EnvironmentId,
+      options: {
+        readonly cursor: number;
+        readonly includeSubagents: boolean;
+        readonly statuses?: ReadonlyArray<"waiting">;
+      },
+    ) =>
       peerMcp.call({
         environmentId,
         tool: "t3_thread_list",
         arguments: {
           allProjects: true,
-          includeSubagents: true,
+          includeSubagents: options.includeSubagents,
           limit: PEER_LIST_LIMIT,
-          ...(cursor === 0 ? {} : { cursor }),
+          ...(options.statuses === undefined ? {} : { statuses: options.statuses }),
+          ...(options.cursor === 0 ? {} : { cursor: options.cursor }),
         },
         limits: PEER_CALL_LIMITS,
         success: OrchestratorMcpThreadListResult,
@@ -402,15 +412,61 @@ export const layer = Layer.effectDiscard(
       environmentId: EnvironmentId,
       pages: number,
     ) {
-      const threads: Array<OrchestratorMcpThreadListItem> = [];
+      const merged = new Map<string, OrchestratorMcpThreadListItem>();
+      // Top-level threads stay separate from subagent bursts so heavy delegation never pushes
+      // finished parent threads off the first page.
       let cursor: number | null = 0;
       for (let page = 0; page < pages && cursor !== null; page++) {
-        const result: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, cursor);
-        threads.push(...result.threads);
+        const result: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, {
+          cursor,
+          includeSubagents: false,
+        });
+        for (const thread of result.threads) merged.set(thread.threadId, thread);
         cursor = result.nextCursor;
       }
-      return threads;
+      const waiting: OrchestratorMcpThreadListResult = yield* listPeerPage(environmentId, {
+        cursor: 0,
+        includeSubagents: true,
+        statuses: ["waiting"],
+      });
+      for (const thread of waiting.threads) merged.set(thread.threadId, thread);
+      return [...merged.values()];
     });
+
+    const extractPeerLastAssistantMessage = (payload: unknown): string | null => {
+      if (!Predicate.isObject(payload) || !Array.isArray(payload.items)) return null;
+      for (const item of payload.items) {
+        if (
+          Predicate.isObject(item) &&
+          item.role === "assistant" &&
+          typeof item.text === "string" &&
+          item.text.trim().length > 0
+        ) {
+          return item.text;
+        }
+      }
+      return null;
+    };
+
+    const readPeerLastMessage = (environmentId: EnvironmentId, threadId: string) =>
+      peerMcp
+        .call({
+          environmentId,
+          tool: "t3_thread_read",
+          arguments: {
+            threadId,
+            view: "messages",
+            limit: 5,
+            runLimit: 1,
+            maxCharsPerItem: 500,
+          },
+          limits: PEER_CALL_LIMITS,
+          success: Schema.Unknown,
+        })
+        .pipe(
+          Effect.map(extractPeerLastAssistantMessage),
+          Effect.orElseSucceed(() => null),
+        );
 
     /** One peer's listing; returns when a held completion wants another look. */
     const checkPeer = Effect.fnUntraced(function* (environmentId: EnvironmentId) {
@@ -428,15 +484,23 @@ export const layer = Layer.effectDiscard(
       for (const alert of alerts) {
         const threadId = alert.threadId as ThreadId;
         // The push names the peer and its thread, so the phone opens it there.
-        yield* deliver(
-          threadId,
-          webPushMessage({
-            kind: alert.kind,
-            environmentId,
-            threadId,
-            threadTitle: alert.threadTitle,
-          }),
+        yield* (
+          alert.kind === "completed"
+            ? readPeerLastMessage(environmentId, alert.threadId)
+            : Effect.succeed<string | null>(null)
         ).pipe(
+          Effect.flatMap((lastMessage) =>
+            deliver(
+              threadId,
+              webPushMessage({
+                kind: alert.kind,
+                environmentId,
+                threadId,
+                threadTitle: alert.threadTitle,
+                lastMessage,
+              }),
+            ),
+          ),
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause)
               ? Effect.void

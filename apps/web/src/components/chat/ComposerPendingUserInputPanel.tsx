@@ -102,7 +102,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   // Read before later hooks to preserve the question's compiler cache.
   const draftSelectedOptions = activeQuestion?.options.map(
     (option) =>
-      !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
+      (activeQuestion.multiSelect || !customAnswerActive) &&
+      progress.selectedOptionValues.includes(option.value ?? option.label),
   );
   const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
 
@@ -203,67 +204,62 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         setCollapsedQuestionId(open ? null : activeQuestion.id);
       }}
     >
-      <CollapsibleTrigger
-        render={<ComposerBanner.Row render={<button type="button" />} />}
-        title={
-          isCollapsed
-            ? gt("Show the question and its options")
-            : gt("Hide the question and its options")
-        }
-        data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
-        className="px-4 py-1.5"
-      >
-        <ComposerBanner.Content>
-          <span
-            className={cn(
-              "min-w-0 text-muted-foreground",
-              isCollapsed ? "max-w-1/2 truncate" : "break-words text-start",
-            )}
-            dir={textDirection(activeQuestion.header)}
-          >
-            {activeQuestion.header}
+      <ComposerBanner.Row className="px-4 py-1.5">
+        <CollapsibleTrigger
+          render={<button type="button" />}
+          title={
+            isCollapsed
+              ? gt("Show the question and its options")
+              : gt("Hide the question and its options")
+          }
+          data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
+          className="col-[1/3] row-start-1 flex min-w-0 cursor-pointer items-center justify-between gap-1 rounded-lg ps-2 sm:ps-1.5 text-start outline-none hover:bg-foreground/5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            <span
+              className={cn(
+                "min-w-0 text-muted-foreground",
+                isCollapsed ? "max-w-1/2 truncate" : "break-words text-start",
+              )}
+              dir={textDirection(activeQuestion.header)}
+            >
+              {activeQuestion.header}
+            </span>
+            {isCollapsed ? (
+              <>
+                <ComposerBanner.Separator />
+                <span
+                  className={cn("min-w-0 flex-1 truncate text-secondary-label", questionTextAlign)}
+                  dir={markdownProseDirection(activeQuestion.question)}
+                >
+                  {activeQuestion.question}
+                </span>
+              </>
+            ) : null}
           </span>
-          {isCollapsed ? (
-            <>
-              <ComposerBanner.Separator />
-              <span
-                className={cn("min-w-0 flex-1 truncate text-secondary-label", questionTextAlign)}
-                dir={markdownProseDirection(activeQuestion.question)}
-              >
-                {activeQuestion.question}
-              </span>
-            </>
-          ) : null}
-        </ComposerBanner.Content>
-        <ComposerBanner.Actions className="gap-0">
-          {prompt.questions.length > 1 ? (
-            <ComposerBanner.Count>
-              {questionIndex + 1}/{prompt.questions.length}
-            </ComposerBanner.Count>
-          ) : null}
-          <ComposerBanner.ToggleIcon expanded={!isCollapsed} />
-          {prompt.dismissible ? (
+          <span className="flex shrink-0 items-center">
+            {prompt.questions.length > 1 ? (
+              <ComposerBanner.Count>
+                {questionIndex + 1}/{prompt.questions.length}
+              </ComposerBanner.Count>
+            ) : null}
+            <ComposerBanner.ToggleIcon expanded={!isCollapsed} />
+          </span>
+        </CollapsibleTrigger>
+        {prompt.dismissible ? (
+          <ComposerBanner.Actions className="gap-0">
             <ComposerBanner.Dismiss
-              render={<span role="button" tabIndex={0} />}
               aria-label={gt("Dismiss question without answering")}
               title={gt("Dismiss question without answering")}
               disabled={isResponding}
               data-pending-user-input-dismiss
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onDismiss(prompt.requestId);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                event.stopPropagation();
+              onClick={() => {
                 onDismiss(prompt.requestId);
               }}
             />
-          ) : null}
-        </ComposerBanner.Actions>
-      </CollapsibleTrigger>
+          </ComposerBanner.Actions>
+        ) : null}
+      </ComposerBanner.Row>
       <CollapsiblePanel>
         <ComposerBanner.Scroll>
           <ComposerBanner.Body className="ps-6 pe-4 pb-1 wrap-anywhere sm:ps-5.5">

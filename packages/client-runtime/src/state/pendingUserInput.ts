@@ -69,6 +69,26 @@ export function resolvePendingUserInputAnswer(
       : question.initialAnswer !== undefined
         ? (draft?.customAnswer ?? null)
         : normalizeDraftAnswer(draft?.customAnswer);
+  const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
+  if (question.multiSelect) {
+    if (selectedOptionValues.length > 0) {
+      return customAnswer !== null &&
+        customAnswer.length > 0 &&
+        !selectedOptionValues.includes(customAnswer)
+        ? [...selectedOptionValues, customAnswer]
+        : selectedOptionValues;
+    }
+    if (customAnswer !== null && customAnswer.length > 0) {
+      return customAnswer;
+    }
+    if (question.required === false && question.options.length === 0) {
+      return "";
+    }
+    return (
+      customAnswer ??
+      (question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0 ? "" : null)
+    );
+  }
   if (customAnswer !== null && customAnswer.length > 0) {
     return customAnswer;
   }
@@ -76,13 +96,6 @@ export function resolvePendingUserInputAnswer(
     return "";
   }
 
-  const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
-  if (question.multiSelect) {
-    return selectedOptionValues.length > 0
-      ? selectedOptionValues
-      : (customAnswer ??
-          (question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0 ? "" : null));
-  }
   return (
     selectedOptionValues[0] ??
     customAnswer ??
@@ -99,8 +112,9 @@ export function setPendingUserInputCustomAnswer(
     return draft ?? {};
   }
 
-  const selectedOptionValues =
-    question.initialAnswer !== undefined || customAnswer.trim().length > 0
+  const selectedOptionValues = question.multiSelect
+    ? normalizeSelectedOptionValues(question, draft?.selectedOptionValues)
+    : question.initialAnswer !== undefined || customAnswer.trim().length > 0
       ? undefined
       : normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
   return {
@@ -114,7 +128,11 @@ export function isPendingUserInputOptionSelected(
   draft: PendingUserInputDraftAnswer | undefined,
   optionValue: string,
 ): boolean {
-  if (question.allowCustomAnswer !== false && normalizeDraftAnswer(draft?.customAnswer)) {
+  if (
+    !question.multiSelect &&
+    question.allowCustomAnswer !== false &&
+    normalizeDraftAnswer(draft?.customAnswer)
+  ) {
     return false;
   }
 
@@ -148,7 +166,7 @@ export function togglePendingUserInputOptionSelection(
       : [...selectedOptionValues, resolvedOptionValue];
 
     return {
-      customAnswer: "",
+      customAnswer: question.allowCustomAnswer === false ? "" : (draft?.customAnswer ?? ""),
       ...(nextSelectedOptionValues.length > 0
         ? { selectedOptionValues: nextSelectedOptionValues }
         : {}),

@@ -187,10 +187,10 @@ interface ThreadRowContext {
 
 /**
  * The home is rebuilt each time a thread is left. These keep that from showing: the rows
- * rise in only the first time, and the list comes back at the place it was left.
+ * rise in only the first time, and each tab's list comes back at the place it was left.
  */
 let homeShownBefore = false;
-let homeScrollTop = 0;
+const homeScrollTopByMode: Record<SidebarThreadMode, number> = { agent: 0, chat: 0 };
 
 /** Only the first screenful of rows rises in; the rest are offscreen anyway. */
 const RISE_ROW_LIMIT = 10;
@@ -303,6 +303,7 @@ export function MobileHomeView(props: {
   readonly sections: MobileHomeSections<EnvironmentThreadShell>;
   /** False while an environment could still deliver threads. */
   readonly loaded: boolean;
+  readonly noProjects?: boolean;
   readonly workingExpanded: boolean;
   readonly onWorkingExpandedChange: (expanded: boolean) => void;
   readonly onSearch: () => void;
@@ -321,13 +322,26 @@ export function MobileHomeView(props: {
       ? []
       : [{ projectKey: null, displayName: null, rows: sections.threads }]
     : groupMobileHomeRowsByProject(sections.threads, props.projectOptions);
+  const initialRowOffset = props.workingExpanded ? sections.working.length : 0;
+  const indexedThreadGroups = threadGroups.reduce<{
+    readonly nextStart: number;
+    readonly groups: Array<(typeof threadGroups)[number] & { readonly startIndex: number }>;
+  }>(
+    (acc, group) => ({
+      nextStart: acc.nextStart + group.rows.length,
+      groups: [...acc.groups, { ...group, startIndex: acc.nextStart }],
+    }),
+    { nextStart: initialRowOffset, groups: [] },
+  ).groups;
   const [rise] = useState(() => !homeShownBefore);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- puts the scroller DOM node back at the offset it was left at
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- puts the scroller DOM node back at the offset it was left at for the active mode
   useLayoutEffect(() => {
     homeShownBefore = true;
-    if (scrollerRef.current !== null) scrollerRef.current.scrollTop = homeScrollTop;
-  }, []);
+    if (scrollerRef.current !== null) {
+      scrollerRef.current.scrollTop = homeScrollTopByMode[props.threadMode];
+    }
+  }, [props.threadMode]);
 
   return (
     <SidebarInset
@@ -341,7 +355,7 @@ export function MobileHomeView(props: {
       <div
         ref={scrollerRef}
         onScroll={(event) => {
-          homeScrollTop = event.currentTarget.scrollTop;
+          homeScrollTopByMode[props.threadMode] = event.currentTarget.scrollTop;
         }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-safe pt-safe"
       >
@@ -448,7 +462,7 @@ export function MobileHomeView(props: {
             ) : null}
           </section>
         ) : null}
-        {threadGroups.map((group) => {
+        {indexedThreadGroups.map((group) => {
           const name = group.displayName ?? gt("Other");
           return (
             <section key={group.projectKey ?? ""} className="mb-2">
@@ -462,7 +476,7 @@ export function MobileHomeView(props: {
                   <ThreadRow
                     key={`${row.thread.environmentId}:${row.thread.id}`}
                     row={row}
-                    index={index}
+                    index={group.startIndex + index}
                     rise={rise}
                     context={props.context}
                     working={false}
@@ -492,6 +506,8 @@ export function MobileHomeView(props: {
               <T>Start one with the new thread button.</T>
             </p>
           </EmptyNote>
+        ) : props.noProjects ? (
+          <NoProjectsHero />
         ) : (
           <EmptyNote title={<T>No threads yet</T>}>
             <p className="text-sm text-muted-foreground">
@@ -531,8 +547,7 @@ export function MobileHome() {
     Schema.Boolean,
   );
 
-  // A pending environment cannot prove the workspace is empty.
-  if (bootstrapped && projects.length === 0) return <NoProjectsHero />;
+  const noAgentProjects = bootstrapped && projects.every((project) => project.isChat === true);
 
   // Per environment, because default instance ids collide across environments.
   const providerEntriesByEnvironment = deriveProviderEntriesByEnvironment(
@@ -557,6 +572,7 @@ export function MobileHome() {
         projectOption,
       })}
       loaded={bootstrapped}
+      noProjects={noAgentProjects}
       workingExpanded={workingExpanded}
       onWorkingExpandedChange={setWorkingExpanded}
       onSearch={() => openCommandPalette()}

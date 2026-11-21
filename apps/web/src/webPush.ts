@@ -76,6 +76,29 @@ async function sendSubscription(subscription: PushSubscription): Promise<boolean
 
 export type EnableWebPushResult = "enabled" | "permission-denied" | "failed";
 
+async function subscribeBrowserPush(
+  registration: ServiceWorkerRegistration,
+): Promise<PushSubscription | null> {
+  const { publicKey } = await runPrimaryHttp(
+    PrimaryEnvironmentHttpClient.pipe(
+      Effect.flatMap((client) => client.webPush.vapidPublicKey({ headers: {} })),
+    ),
+  );
+  const options = {
+    userVisibleOnly: true,
+    applicationServerKey: applicationServerKey(publicKey),
+  };
+  try {
+    return await registration.pushManager.subscribe(options);
+  } catch {
+    // A subscription made for another server key blocks a new one until it is dropped.
+    const stale = await registration.pushManager.getSubscription();
+    if (stale === null) return null;
+    await stale.unsubscribe();
+    return registration.pushManager.subscribe(options);
+  }
+}
+
 /** Must run from a tap: iOS only shows the permission prompt for a user gesture. */
 export async function enableWebPush(): Promise<EnableWebPushResult> {
   if (webPushAvailability() !== "available") return "failed";
@@ -84,26 +107,8 @@ export async function enableWebPush(): Promise<EnableWebPushResult> {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return "permission-denied";
     const registration = await readyRegistration();
-    const { publicKey } = await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) => client.webPush.vapidPublicKey({ headers: {} })),
-      ),
-    );
-    const options = {
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey(publicKey),
-    };
-    let subscription: PushSubscription;
-    try {
-      subscription = await registration.pushManager.subscribe(options);
-    } catch {
-      // A subscription made for another server key blocks a new one until it is dropped.
-      const stale = await registration.pushManager.getSubscription();
-      if (stale === null) return "failed";
-      await stale.unsubscribe();
-      subscription = await registration.pushManager.subscribe(options);
-    }
-    if (!(await sendSubscription(subscription))) return "failed";
+    const subscription = await subscribeBrowserPush(registration);
+    if (subscription === null || !(await sendSubscription(subscription))) return "failed";
     rememberEnabled(true);
     return "enabled";
   } catch {
@@ -138,6 +143,18 @@ export async function disableWebPush(): Promise<void> {
 export function startWebPush(router: { readonly history: { push: (path: string) => void } }): void {
   if (webPushAvailability() !== "available") return;
   navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "agentdock:refresh-push-subscription") {
+      if (!isWebPushEnabled() || Notification.permission !== "granted") return;
+      void readyRegistration()
+        .then(async (registration) => {
+          const current =
+            (await registration.pushManager.getSubscription()) ??
+            (await subscribeBrowserPush(registration));
+          if (current !== null) await sendSubscription(current);
+        })
+        .catch(() => undefined);
+      return;
+    }
     const path = threadPathFromWorkerMessage(event.data);
     if (path !== null) router.history.push(path);
   });
@@ -149,8 +166,9 @@ export function startWebPush(router: { readonly history: { push: (path: string) 
         return;
       }
       const registration = await readyRegistration();
-      const subscription = await registration.pushManager.getSubscription();
-      // The browser dropped it (site data cleared); the switch goes back to off.
+      const subscription =
+        (await registration.pushManager.getSubscription()) ??
+        (await subscribeBrowserPush(registration));
       if (subscription === null) rememberEnabled(false);
       else await sendSubscription(subscription);
     } catch {

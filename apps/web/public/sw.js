@@ -66,3 +66,24 @@ self.addEventListener("notificationclick", (event) => {
     }),
   );
 });
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const key =
+    event.oldSubscription && event.oldSubscription.options
+      ? event.oldSubscription.options.applicationServerKey
+      : null;
+  event.waitUntil(
+    (async () => {
+      if (key) {
+        await self.registration.pushManager
+          .subscribe({ userVisibleOnly: true, applicationServerKey: key })
+          .catch(() => undefined);
+      }
+      const clients = await windowClients();
+      for (const client of clients) {
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Client.postMessage takes none.
+        client.postMessage({ type: "agentdock:refresh-push-subscription" });
+      }
+    })(),
+  );
+});

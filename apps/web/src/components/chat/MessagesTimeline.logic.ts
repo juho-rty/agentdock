@@ -986,6 +986,56 @@ function timelineEntryIsCompaction(entry: TimelineEntry): boolean {
   return entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction";
 }
 
+/**
+ * Consecutive wake runs that share the same notification summary without producing a reply,
+ * resource card, question or error in between are fragments of one background wake; only the
+ * first header is shown so split continuation runs do not stack identical banners.
+ */
+function deriveRedundantContinuationNotificationIds(
+  entries: ReadonlyArray<TimelineEntry>,
+): ReadonlySet<string> {
+  const redundant = new Set<string>();
+  let lastNotificationLabel: string | null = null;
+  let sawSubstantiveOutput = false;
+  for (const entry of entries) {
+    if (entry.kind === "work" && entry.entry.itemType === "notification") {
+      const label = entry.entry.label.trim();
+      if (
+        lastNotificationLabel !== null &&
+        !sawSubstantiveOutput &&
+        label.length > 0 &&
+        label === lastNotificationLabel
+      ) {
+        redundant.add(entry.id);
+      } else {
+        lastNotificationLabel = label;
+      }
+      sawSubstantiveOutput = false;
+      continue;
+    }
+    if (entry.kind === "message") {
+      lastNotificationLabel = null;
+      sawSubstantiveOutput = true;
+      continue;
+    }
+    if (
+      entry.kind === "html-render" ||
+      entry.kind === "mcp-app" ||
+      entry.kind === "proposed-plan" ||
+      entry.kind === "sent-message" ||
+      (entry.kind === "event" && timelineEntryIsPersistentResourceCard(entry)) ||
+      (entry.kind === "work" &&
+        (entry.entry.tone === "error" ||
+          entry.entry.sourceActivityKind === "runtime.error" ||
+          entry.entry.itemType === "error" ||
+          entry.entry.questionAnswer !== undefined))
+    ) {
+      sawSubstantiveOutput = true;
+    }
+  }
+  return redundant;
+}
+
 function responseBoundaryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "message") return entry.message.runId ?? null;
   if (entry.kind === "work") return entry.entry.runId ?? null;
@@ -1616,6 +1666,7 @@ export function deriveMessagesTimelineRows(
   resolve: MessageResolver = m,
 ): MessagesTimelineRow[] {
   const timelineEntries = timelineRowEntries(input);
+  const redundantNotificationIds = deriveRedundantContinuationNotificationIds(timelineEntries);
   const embeddedResultRunIds = new Set<RunId>();
   for (const entry of timelineEntries) {
     if ((entry.kind === "html-render" || entry.kind === "mcp-app") && entry.runId !== null) {
@@ -2037,6 +2088,12 @@ export function deriveMessagesTimelineRows(
     }
 
     if (timelineEntry.kind === "work") {
+      if (
+        timelineEntry.entry.itemType === "notification" &&
+        redundantNotificationIds.has(timelineEntry.id)
+      ) {
+        continue;
+      }
       if (
         isPendingApproval(timelineEntry.entry) ||
         (timelineEntry.entry.runId != null && itemizedRunIds.has(timelineEntry.entry.runId)) ||

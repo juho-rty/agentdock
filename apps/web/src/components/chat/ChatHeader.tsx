@@ -32,6 +32,12 @@ import { canShareWithGuestAtom } from "./guestShareAvailability";
 import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
+import {
+  useEnvironment,
+  useEnvironmentMachines,
+  usePrimaryEnvironmentId,
+} from "../../state/environments";
+import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
   WorkspaceBreadcrumb,
@@ -87,6 +93,15 @@ export const ChatHeader = memo(function ChatHeader({
   const gt = useGT();
   const activeProjectName = activeProject?.isScratch ? gt("No project") : activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const activeEnvironment = useEnvironment(activeThreadEnvironmentId);
+  const machineById = useEnvironmentMachines();
+  const remoteEnvironmentLabel =
+    primaryEnvironmentId !== null &&
+    activeThreadEnvironmentId !== primaryEnvironmentId &&
+    activeEnvironment?.label
+      ? activeEnvironment.label
+      : null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
   const [collapseParentTitle, setCollapseParentTitle] = useState(false);
@@ -332,7 +347,10 @@ export const ChatHeader = memo(function ChatHeader({
             </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
-        <WorkspaceBreadcrumbItem current className="min-w-10 flex-1">
+        <WorkspaceBreadcrumbItem
+          current
+          className="min-w-10 flex-1 max-sm:flex-col max-sm:items-start max-sm:gap-0"
+        >
           {renamingTitle !== null ? (
             <input
               autoFocus
@@ -398,6 +416,16 @@ export const ChatHeader = memo(function ChatHeader({
               <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
           )}
+          {renamingTitle === null && remoteEnvironmentLabel !== null ? (
+            <span className="flex max-w-full items-center gap-1 text-2xs leading-tight text-muted-foreground sm:hidden">
+              <EnvironmentMachineIcon
+                aria-hidden
+                kind={machineById.get(activeThreadEnvironmentId) ?? "server"}
+                className="size-2.5 shrink-0"
+              />
+              <span className="truncate">{remoteEnvironmentLabel}</span>
+            </span>
+          ) : null}
           {renamingTitle === null && activeThreadLinkOrigin ? (
             <Tooltip>
               <TooltipTrigger render={<Badge variant="info" size="sm" className="max-sm:hidden" />}>

@@ -4459,6 +4459,61 @@ it.each([true, false])(
   },
 );
 
+it("coalesces duplicate notification banners across consecutive reply-less continuation runs", () => {
+  const time = (second: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, second)).toISOString();
+  const notification = (id: string, run: string, second: number, label: string) => ({
+    kind: "work" as const,
+    id,
+    createdAt: time(second),
+    entry: {
+      id,
+      runId: RunId.make(run),
+      createdAt: time(second),
+      label,
+      tone: "info" as const,
+      itemType: "notification" as const,
+    },
+  });
+  const tool = (id: string, run: string, second: number) => ({
+    kind: "work" as const,
+    id,
+    createdAt: time(second),
+    entry: {
+      id,
+      runId: RunId.make(run),
+      createdAt: time(second),
+      label: id,
+      tone: "info" as const,
+    },
+  });
+  const rows = deriveMessagesTimelineRows({
+    timelineEntries: [
+      notification("wake-1-note", "wake-1", 10, "Background activity updated"),
+      tool("wake-1-tool", "wake-1", 11),
+      notification("wake-2-note", "wake-2", 20, "Background activity updated"),
+      tool("wake-2-tool", "wake-2", 21),
+      notification("wake-3-note", "wake-3", 30, 'Command "npm test" finished'),
+      tool("wake-3-tool", "wake-3", 31),
+    ],
+    latestRun: {
+      runId: RunId.make("wake-3"),
+      status: "completed",
+      startedAt: time(30),
+      completedAt: time(32),
+    },
+    isWorking: false,
+    turnDiffSummaries: [],
+    supportsConversationRollback: false,
+  });
+  const ids = rows.map((row) => row.id);
+  expect(ids).toContain("wake-1-note");
+  expect(ids).not.toContain("wake-2-note");
+  expect(ids).toContain("wake-3-note");
+  expect(ids).toContain("turn-fold:wake-1");
+  expect(ids).toContain("turn-fold:wake-2");
+  expect(ids).toContain("turn-fold:wake-3");
+});
+
 it("keeps the working header in place across worktree setup handoff", () => {
   const snapshot: WorktreeSetupSnapshot = {
     threadId: ThreadId.make("thread-setup"),

@@ -13,6 +13,8 @@ import { useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { cn } from "../../lib/utils";
+import { environmentPresentations } from "../../state/presentation";
+import { primaryEnvironmentIdAtom } from "../../state/primaryEnvironment";
 import { primaryServerProvidersAtom } from "../../state/server";
 import { getProviderStatusKey, PROVIDER_STATUS_STYLES } from "../settings/providerStatus";
 import { barColor, LimitWindows, PaceIcon, usePaceMark } from "../usage/UsageLimits";
@@ -137,15 +139,18 @@ function WindowLine({
 
 function ProviderUsageRow({
   provider,
+  environmentLabel,
   now,
   onOpen,
 }: {
   readonly provider: ServerProvider;
+  readonly environmentLabel: string | null;
   readonly now: number;
   readonly onOpen: () => void;
 }) {
   const gt = useGT();
-  const name = resolveProviderInstanceDisplayName(provider);
+  const baseName = resolveProviderInstanceDisplayName(provider);
+  const name = environmentLabel ? `${baseName} · ${environmentLabel}` : baseName;
   const statusKey = getProviderStatusKey(provider);
   const windows = provider.usageLimits?.windows ?? [];
   const lines = rowWindows(windows);
@@ -169,7 +174,10 @@ function ProviderUsageRow({
           aria-hidden
           className={cn("size-1.5 shrink-0 rounded-full", PROVIDER_STATUS_STYLES[statusKey].dot)}
         />
-        <span className="truncate text-sidebar-foreground">{name}</span>
+        <span className="truncate text-sidebar-foreground">{baseName}</span>
+        {environmentLabel ? (
+          <span className="truncate text-2xs text-muted-foreground">{environmentLabel}</span>
+        ) : null}
         {note ? <span className="ms-auto shrink-0 text-muted-foreground">{note}</span> : null}
       </span>
       {lines.map((window) => (
@@ -198,16 +206,127 @@ function ProviderUsageRow({
   );
 }
 
+interface SidebarProviderRowEntry {
+  readonly key: string;
+  readonly provider: ServerProvider;
+  readonly environmentLabel: string | null;
+  readonly sharedAccountKey: string | null;
+}
+
+function providerSharedAccountKey(provider: ServerProvider): string | null {
+  const email = provider.auth.email?.trim().toLowerCase();
+  const base = email
+    ? `${provider.driver}:${email}`
+    : provider.usageLimits?.credentialFingerprint
+      ? `${provider.driver}:credential:${provider.usageLimits.credentialFingerprint}`
+      : null;
+  if (!base) return null;
+  return provider.auth.workspaceId ? `${base}:${provider.auth.workspaceId}` : base;
+}
+
+/** Collects enabled providers across connected environments, deduplicating shared accounts. */
+function collectSidebarProviderRows(input: {
+  readonly primaryEnvironmentId: string | null;
+  readonly primaryProviders: ReadonlyArray<ServerProvider>;
+  readonly environments: ReadonlyArray<{
+    readonly environmentId: string;
+    readonly label: string;
+    readonly providers: ReadonlyArray<ServerProvider>;
+  }>;
+}): ReadonlyArray<SidebarProviderRowEntry> {
+  const sources =
+    input.environments.length > 0
+      ? input.environments
+      : input.primaryProviders.length > 0
+        ? [
+            {
+              environmentId: input.primaryEnvironmentId ?? "primary",
+              label: "",
+              providers: input.primaryProviders,
+            },
+          ]
+        : [];
+  const multiEnvironment = sources.length > 1;
+  const entries: SidebarProviderRowEntry[] = [];
+  const indexBySharedAccount = new Map<string, number>();
+
+  for (const source of sources) {
+    const isPrimary =
+      input.primaryEnvironmentId === null || source.environmentId === input.primaryEnvironmentId;
+    for (const provider of source.providers) {
+      if (!provider.enabled || !provider.installed) continue;
+      const hasWindows = (provider.usageLimits?.windows.length ?? 0) > 0;
+      // Remote machines contribute active quota bars; sign-in/no-limits prompts stay scoped to primary.
+      if (!isPrimary && !hasWindows) continue;
+      const sharedAccountKey = providerSharedAccountKey(provider);
+      const existingIndex =
+        sharedAccountKey === null ? undefined : indexBySharedAccount.get(sharedAccountKey);
+      if (existingIndex !== undefined) {
+        const existing = entries[existingIndex]!;
+        const fresher =
+          Date.parse(provider.usageLimits?.checkedAt ?? "") >
+          Date.parse(existing.provider.usageLimits?.checkedAt ?? "");
+        entries[existingIndex] = {
+          ...existing,
+          provider: fresher ? provider : existing.provider,
+          environmentLabel: null,
+        };
+        continue;
+      }
+      const nextIndex = entries.length;
+      if (sharedAccountKey !== null) {
+        indexBySharedAccount.set(sharedAccountKey, nextIndex);
+      }
+      entries.push({
+        key: `${source.environmentId}:${provider.instanceId}`,
+        provider,
+        environmentLabel: multiEnvironment && source.label ? source.label : null,
+        sharedAccountKey,
+      });
+    }
+  }
+
+  if (multiEnvironment) {
+    const countsByName = new Map<string, number>();
+    for (const entry of entries) {
+      const name = resolveProviderInstanceDisplayName(entry.provider);
+      countsByName.set(name, (countsByName.get(name) ?? 0) + 1);
+    }
+    return entries.map((entry) => {
+      const name = resolveProviderInstanceDisplayName(entry.provider);
+      return (countsByName.get(name) ?? 0) > 1 ? entry : { ...entry, environmentLabel: null };
+    });
+  }
+
+  return entries;
+}
+
 /** Every enabled agent's remaining quota, reset time and pace, at the foot of the sidebar. */
 export function SidebarProviderUsage() {
   const gt = useGT();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
-  const providers = useAtomValue(primaryServerProvidersAtom);
+  const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
+  const primaryProviders = useAtomValue(primaryServerProvidersAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const minute = useNowMinute();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const now = Date.parse(`${minute}:00Z`);
-  const visible = providers.filter((provider) => provider.enabled && provider.installed);
+  const visible = collectSidebarProviderRows({
+    primaryEnvironmentId,
+    primaryProviders,
+    environments: [...presentations.entries()].flatMap(([environmentId, presentation]) =>
+      presentation.serverConfig === null
+        ? []
+        : [
+            {
+              environmentId,
+              label: presentation.entry.target.label,
+              providers: presentation.serverConfig.providers,
+            },
+          ],
+    ),
+  });
   if (visible.length === 0) return null;
 
   const openUsage = () => {
@@ -237,10 +356,11 @@ export function SidebarProviderUsage() {
       </button>
       {collapsed
         ? null
-        : visible.map((provider) => (
+        : visible.map((entry) => (
             <ProviderUsageRow
-              key={provider.instanceId}
-              provider={provider}
+              key={entry.key}
+              provider={entry.provider}
+              environmentLabel={entry.environmentLabel}
               now={now}
               onOpen={openUsage}
             />

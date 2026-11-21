@@ -110,6 +110,18 @@ export function observePeerThreadAlert(thread: PeerAlertThread): WebPushAlertObs
   });
 }
 
+const MAX_REMEMBERED_PEER_ENTRIES = 2_000;
+
+function setBounded<K, V>(map: Map<K, V>, key: K, value: V, limit = MAX_REMEMBERED_PEER_ENTRIES) {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next();
+    if (oldest.done) break;
+    map.delete(oldest.value);
+  }
+}
+
 const isSubagent = (thread: PeerAlertThread) => thread.relationshipToParent === "subagent";
 
 /** The listed top-level thread above a subagent, or null when it is not in the listing. */
@@ -146,10 +158,12 @@ export function stepPeerAlerts(
       }
       if (isSubagent(thread)) {
         const request = userRequest(thread);
-        if (request !== undefined) memory.childRequests.set(thread.threadId, request.requestId);
+        if (request !== undefined)
+          setBounded(memory.childRequests, thread.threadId, request.requestId);
         continue;
       }
-      memory.remembered.set(
+      setBounded(
+        memory.remembered,
         thread.threadId,
         observePeerThreadAlert(thread)?.identity ?? NOTHING_ANNOUNCED,
       );
@@ -170,7 +184,7 @@ export function stepPeerAlerts(
       const request = userRequest(thread);
       if (request === undefined || memory.childRequests.get(thread.threadId) === request.requestId)
         continue;
-      memory.childRequests.set(thread.threadId, request.requestId);
+      setBounded(memory.childRequests, thread.threadId, request.requestId);
       const topLevel = topLevelOf(thread, byId);
       if (topLevel === null) continue;
       alerts.push({
@@ -206,7 +220,9 @@ export function stepPeerAlerts(
       }
     }
     memory.heldCompletions.delete(thread.threadId);
-    if (decision.remember !== undefined) memory.remembered.set(thread.threadId, decision.remember);
+    if (decision.remember !== undefined) {
+      setBounded(memory.remembered, thread.threadId, decision.remember);
+    }
     if (decision.notify === null) continue;
     // Work delegated from another environment reports its end to the thread that asked for
     // it, which announces its own; only its questions need the user here.

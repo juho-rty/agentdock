@@ -30,10 +30,12 @@ import {
 import { useMobileHomeFilters } from "./useMobileHomeFilters";
 
 /**
- * The bar is rebuilt when a tab opens as its own page, so the pill's last place is kept
- * here: the new bar starts the pill there and slides it to the tab that was tapped.
+ * The bar is rebuilt when a tab opens as its own page, so the pill's last tab is kept
+ * here: a new bar starts the pill there and slides it to the tab that was tapped, while
+ * tab-count changes (such as Pull Requests appearing) keep the active tab in place.
  */
-let lastActiveIndex = -1;
+let lastActiveTab: MobileTab | null = null;
+let lastTabCount = -1;
 
 /** On the Chat tab starts a chat on the chat computer, else a draft in the filtered or latest project. */
 function useMobileNewThread() {
@@ -106,21 +108,29 @@ export function MobileTabBarView(props: {
     ? ["threads", "pullRequests", "usage", "settings"]
     : ["threads", "usage", "settings"];
   const activeIndex = props.activeTab === null ? -1 : tabs.indexOf(props.activeTab);
-  const [pillIndex, setPillIndex] = useState(() =>
-    lastActiveIndex >= 0 && activeIndex >= 0 ? lastActiveIndex : activeIndex,
+  const [pillTab, setPillTab] = useState<MobileTab | null>(() =>
+    lastActiveTab !== null && props.activeTab !== null && tabs.includes(lastActiveTab)
+      ? lastActiveTab
+      : props.activeTab,
   );
+  const tabCountChangedSameTab =
+    lastTabCount >= 0 && lastTabCount !== tabs.length && lastActiveTab === props.activeTab;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a frame timer: a new bar must paint the pill at its old place before it moves, or the CSS transition has nothing to run from
   useEffect(() => {
-    lastActiveIndex = activeIndex;
-    const frame = requestAnimationFrame(() => setPillIndex(activeIndex));
+    lastTabCount = tabs.length;
+    lastActiveTab = props.activeTab;
+    const frame = requestAnimationFrame(() => setPillTab(props.activeTab));
     return () => cancelAnimationFrame(frame);
-  }, [activeIndex]);
+  }, [props.activeTab, tabs.length]);
   // The tap moves the pill at once; the page may take a moment longer to arrive.
   const select = (tab: MobileTab) => {
-    lastActiveIndex = tabs.indexOf(tab);
-    setPillIndex(lastActiveIndex);
+    lastActiveTab = tab;
+    lastTabCount = tabs.length;
+    setPillTab(tab);
   };
-  const shownTab = tabs[pillIndex] ?? props.activeTab;
+  const pillIndex = pillTab === null ? -1 : tabs.indexOf(pillTab);
+  const effectivePillIndex = pillIndex >= 0 ? pillIndex : activeIndex;
+  const shownTab = pillTab !== null && pillIndex >= 0 ? pillTab : props.activeTab;
   return (
     <nav
       aria-label={gt("Main tabs")}
@@ -133,13 +143,14 @@ export function MobileTabBarView(props: {
     >
       <div className="flex items-center gap-3 px-4 pb-2.5">
         <div className="liquid-glass pointer-events-auto relative flex h-12 min-w-0 flex-1 items-center gap-1 rounded-full px-1">
-          {activeIndex < 0 || pillIndex < 0 ? null : (
+          {activeIndex < 0 || effectivePillIndex < 0 ? null : (
             <span
               aria-hidden
               className="liquid-tab-indicator pointer-events-none absolute inset-y-0 left-1 my-auto h-10 rounded-full bg-foreground/[0.08]"
               style={{
                 width: `calc((100% - 0.5rem - ${tabs.length - 1} * 0.25rem) / ${tabs.length})`,
-                translate: `calc(${pillIndex} * (100% + 0.25rem)) 0`,
+                translate: `calc(${effectivePillIndex} * (100% + 0.25rem)) 0`,
+                ...(tabCountChangedSameTab ? { transition: "none" } : {}),
               }}
             />
           )}
@@ -196,13 +207,16 @@ export function MobileTabBar(props: { readonly variant: "floating" | "docked" })
   const router = useRouter();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- warms the router: tab pages are separate downloads, and a first tap that has to fetch one feels dead
   useEffect(() => {
+    const routes = pullRequestsSupported
+      ? (["/", "/usage", "/settings", "/pull-requests"] as const)
+      : (["/", "/usage", "/settings"] as const);
     const timer = setTimeout(() => {
-      for (const to of ["/", "/usage", "/settings", "/pull-requests"] as const) {
+      for (const to of routes) {
         void router.preloadRoute({ to }).catch(() => undefined);
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [router]);
+  }, [pullRequestsSupported, router]);
   if (activeTab === null) return null;
   return (
     <MobileTabBarView

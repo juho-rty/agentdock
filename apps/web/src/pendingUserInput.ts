@@ -54,15 +54,21 @@ export function projectPendingUserInputAnswer(
   answer: unknown,
   records: ReadonlyArray<AnswerContextRecord>,
 ) {
-  if (typeof answer !== "string" || records.length === 0) return answer;
+  if (records.length === 0) return answer;
   const recordsById = new Map(records.map((record) => [record.contextId, record]));
-  return replaceComposerContextReferences(answer, (reference) => {
-    const record = recordsById.get(reference.contextId);
-    if (record?.kind !== reference.kind) return reference.source;
-    return record.kind === "thread"
-      ? formatThreadLink(record, reference.label)
-      : projectComposerContextForProvider({ text: reference.source, records: [record] });
-  });
+  const projectText = (value: string) =>
+    replaceComposerContextReferences(value, (reference) => {
+      const record = recordsById.get(reference.contextId);
+      if (record?.kind !== reference.kind) return reference.source;
+      return record.kind === "thread"
+        ? formatThreadLink(record, reference.label)
+        : projectComposerContextForProvider({ text: reference.source, records: [record] });
+    });
+  if (typeof answer === "string") return projectText(answer);
+  if (Array.isArray(answer)) {
+    return answer.map((entry) => (typeof entry === "string" ? projectText(entry) : entry));
+  }
+  return answer;
 }
 
 // Question drafts retain deleted chip records for undo; only transfer referenced records.

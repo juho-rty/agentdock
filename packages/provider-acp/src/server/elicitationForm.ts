@@ -204,16 +204,19 @@ export function parseElicitationForm(
     parsedFields.push({ id, property, options: parsed.options });
   }
   // An optional `<id>__other` (OMP's ask dialog) or `<id>_other` (Antigravity) text field is
-  // the free-text answer to optional choice `<id>`: ask them as one question and send custom
-  // text to the companion. A multi-select answer is then either options or text, since
-  // asking the companion separately doubles the question count.
+  // the free-text answer to `<id>`: ask them as one question and send custom text to the
+  // companion, alongside any checked options on a multi-select.
   const companions = new Map<string, string>();
   for (const [id, field] of fields) {
     if (field.kind !== "choice" && field.kind !== "multiChoice") continue;
     const companionId = [`${id}__other`, `${id}_other`].find(
       (candidate) => fields.get(candidate)?.kind === "text",
     );
-    if (companionId !== undefined && !required.has(id) && !required.has(companionId)) {
+    if (
+      companionId !== undefined &&
+      !required.has(companionId) &&
+      (!required.has(id) || (field.kind === "multiChoice" && field.minItems === 0))
+    ) {
       companions.set(id, companionId);
     }
   }
@@ -248,8 +251,43 @@ export function parseElicitationForm(
       for (const [id, field] of fields) {
         if (folded.has(id)) continue;
         const answer = Object.hasOwn(answers, id) ? answers[id] : undefined;
-        const typed = answer === undefined ? undefined : typedAnswer(field, answer);
         const companionId = companions.get(id);
+        if (companionId !== undefined && field.kind === "multiChoice" && Array.isArray(answer)) {
+          const selected = [
+            ...new Set(
+              answer.filter(
+                (entry): entry is string => typeof entry === "string" && field.values.has(entry),
+              ),
+            ),
+          ];
+          const customText = answer
+            .filter(
+              (entry): entry is string =>
+                typeof entry === "string" && !field.values.has(entry) && entry.trim().length > 0,
+            )
+            .join(", ");
+          const hasSelected =
+            selected.length > 0 &&
+            selected.length >= field.minItems &&
+            selected.length <= field.maxItems;
+          if (hasSelected) {
+            entries.push([id, selected]);
+            if (customText.length > 0) entries.push([companionId, customText]);
+            continue;
+          }
+          if (customText.length > 0 && (!required.has(id) || field.minItems === 0)) {
+            if (required.has(id)) entries.push([id, []]);
+            entries.push([companionId, customText]);
+            continue;
+          }
+          if (answer.length === 0 && field.minItems === 0) {
+            entries.push([id, []]);
+            continue;
+          }
+          if (required.has(id)) return undefined;
+          continue;
+        }
+        const typed = answer === undefined ? undefined : typedAnswer(field, answer);
         if (typed !== undefined) entries.push([id, typed]);
         else if (
           allowOther &&
@@ -259,6 +297,9 @@ export function parseElicitationForm(
         ) {
           entries.push([id, answer]);
         } else if (companionId !== undefined && typeof answer === "string") {
+          if (required.has(id) && field.kind === "multiChoice" && field.minItems === 0) {
+            entries.push([id, []]);
+          }
           entries.push([companionId, answer]);
         } else if (required.has(id)) return undefined;
       }
