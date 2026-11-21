@@ -101,6 +101,8 @@ jobs:
             release/*.blockmap
             release/*.yml
           if-no-files-found: error
+          # The release job republishes these, so old ones only use up the artifact quota.
+          retention-days: 2
 
   release:
     if: github.ref_type == 'tag'
