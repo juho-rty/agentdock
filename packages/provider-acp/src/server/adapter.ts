@@ -624,6 +624,11 @@ export interface AcpAdapterV2Flavor {
   readonly continuationWorkingFinalizeDebounce?: Duration.Input;
   /** Offer a post-settle continuation as soon as thoughts or new tool calls arrive, before completion. */
   readonly wakeOnPostSettleActivity?: boolean;
+  /**
+   * The agent ends its prompt while these tools still run and reports their end later, with no
+   * prompt open. The session owes background work until then, so nothing releases its process.
+   */
+  readonly toolOutlivesCompletedTurn?: (toolCall: AcpToolCallState) => boolean;
   /** Settle on native idle after the accepted user echo, only on negotiated ACP v2. */
   readonly followAgentWorkState?: boolean;
   /**
@@ -2441,6 +2446,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         // Grok re-prompts on stale monitor notices; suppress output until a genuine terminal or app turn.
         const suppressPostSettleMonitorPrompt = yield* Ref.make(false);
         const runningBackgroundTaskIds = yield* Ref.make<ReadonlySet<string>>(new Set());
+        const outlivingToolCallIds = yield* Ref.make<ReadonlySet<string>>(new Set());
         // Background command task id → the completed turn that owns its row. Ended commands stay,
         // bounded, so a later authoritative terminal still corrects the row on its run.
         const detachedBackgroundCommands = yield* Ref.make<ReadonlyMap<string, ActiveAcpTurn>>(
@@ -2530,8 +2536,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
 
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
           Queue.offer(events, event).pipe(Effect.asVoid);
-        let scheduleDeferredFinalize: (context: ActiveAcpTurn) => Effect.Effect<void> = () =>
-          Effect.void;
+        let scheduleDeferredFinalize: (
+          context: ActiveAcpTurn,
+          heldWindows?: number,
+        ) => Effect.Effect<void> = () => Effect.void;
 
         const nativeLogging = options.nativeLogging?.(input.threadId);
         const promptInactivityTimeoutMillis =
@@ -5390,6 +5398,20 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const context = yield* Ref.get(activeTurn);
           const update = notification.update;
           if (
+            (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") &&
+            update.status != null &&
+            update.status !== "pending" &&
+            update.status !== "in_progress"
+          ) {
+            const endedToolCallId = update.toolCallId;
+            yield* Ref.update(outlivingToolCallIds, (current) => {
+              if (!current.has(endedToolCallId)) return current;
+              const next = new Set(current);
+              next.delete(endedToolCallId);
+              return next;
+            });
+          }
+          if (
             followsAgentWorkState &&
             flavor.extractSubagentSessionEvent !== undefined &&
             notification.sessionId !== (yield* Ref.get(activeSessionId)) &&
@@ -7641,6 +7663,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* Ref.set(wakeReports, noWakeReports);
                 yield* Ref.set(continuationRequested, false);
                 yield* Ref.set(runningBackgroundTaskIds, new Set());
+                yield* Ref.set(outlivingToolCallIds, new Set());
                 yield* Ref.set(detachedBackgroundCommands, new Map());
                 yield* Ref.set(endedBackgroundTaskIds, new Set());
                 yield* Ref.set(midTurnUnreportedCompletedTaskIds, new Set());
@@ -8154,6 +8177,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               yield* Ref.set(wakeReports, noWakeReports);
               yield* Ref.set(continuationRequested, false);
               yield* Ref.set(runningBackgroundTaskIds, new Set());
+              yield* Ref.set(outlivingToolCallIds, new Set());
               yield* Ref.set(detachedBackgroundCommands, new Map());
               yield* Ref.set(midTurnUnreportedCompletedTaskIds, new Set());
               yield* Ref.set(carryoverSubagents, null);
@@ -8197,6 +8221,24 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             }
           }
           if (settledStatus === "completed") {
+            const outlivesTurn = flavor.toolOutlivesCompletedTurn;
+            if (outlivesTurn !== undefined) {
+              const outliving = Array.from(context.tools.values())
+                .filter(
+                  (tool) =>
+                    acpCompletedTurnShouldTerminalizeTool(tool, {
+                      ...flavor,
+                      extractSubagentUpdate,
+                    }) && outlivesTurn(tool),
+                )
+                .map((tool) => tool.toolCallId);
+              if (outliving.length > 0) {
+                yield* Ref.update(
+                  outlivingToolCallIds,
+                  (current) => new Set([...current, ...outliving]),
+                );
+              }
+            }
             yield* terminalizeOpenForegroundTools(context);
           } else if (settledStatus === "interrupted") {
             yield* terminalizeOpenRunOwnedItems(context, {
@@ -8367,14 +8409,20 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* Deferred.succeed(context.completed, undefined).pipe(Effect.ignore);
         });
 
-        scheduleDeferredFinalize = Effect.fn("scheduleDeferredFinalize")(function* (context) {
+        scheduleDeferredFinalize = Effect.fn("scheduleDeferredFinalize")(function* (
+          context,
+          heldWindows = 0,
+        ) {
           if (!flavor.deferFinalizeForBackgroundWork) return;
           if (!context.promptSettled || context.finalized || context.interrupted) return;
           if (hasDeferredBackgroundWork(context)) return;
           const isContinuation = acpIsProviderContinuationMessage(context.input.message);
+          const awaitsReply =
+            isContinuation &&
+            !context.assistantRespondedSinceLastWork &&
+            flavor.continuationWorkingFinalizeDebounce !== undefined;
           const debounce = isContinuation
-            ? !context.assistantRespondedSinceLastWork &&
-              flavor.continuationWorkingFinalizeDebounce !== undefined
+            ? awaitsReply
               ? flavor.continuationWorkingFinalizeDebounce
               : (flavor.continuationFinalizeDebounce ?? ACP_DEFERRED_FINALIZE_DEBOUNCE)
             : ACP_DEFERRED_FINALIZE_DEBOUNCE;
@@ -8390,6 +8438,21 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               return;
             }
             if (hasDeferredBackgroundWork(context)) return;
+            // A command the wake started can run past the quiet window without a word. Closing
+            // here would report the run finished and split the rest into another run.
+            if (
+              awaitsReply &&
+              promptInactivityTimeoutMillis !== undefined &&
+              (heldWindows + 1) * Duration.toMillis(Duration.fromInputUnsafe(debounce)) <
+                promptInactivityTimeoutMillis &&
+              [...context.tools.values()].some((tool) => {
+                const status = toolStatus(tool.status);
+                return status === "pending" || status === "running";
+              })
+            ) {
+              yield* scheduleDeferredFinalize(context, heldWindows + 1);
+              return;
+            }
             const status = context.promptSettledStatus ?? "completed";
             yield* finalizeTurn(context, status);
           }).pipe(Effect.forkIn(sessionScope), Effect.asVoid);
@@ -9294,6 +9357,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   if ((yield* Ref.get(midTurnUnreportedCompletedTaskIds)).size > 0) return true;
                   if (yield* Ref.get(continuationRequested)) return true;
                   if ((yield* Ref.get(runningBackgroundTaskIds)).size > 0) return true;
+                  if ((yield* Ref.get(outlivingToolCallIds)).size > 0) return true;
                   const active = yield* Ref.get(activeTurn);
                   if (
                     active !== null &&

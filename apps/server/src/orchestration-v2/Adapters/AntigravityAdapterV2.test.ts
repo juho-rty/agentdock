@@ -1470,3 +1470,210 @@ describe("AntigravityAdapterV2 post-settle wake permissions", () => {
       }).pipe(Effect.provide(layerSession)),
   );
 });
+
+describe("AntigravityAdapterV2 background command wake", () => {
+  // Replays a capture from agy 1.5.14: the prompt ends while `run_command` still runs, and the
+  // command's completion and the reply about it arrive later with no prompt open.
+  it.live("carries a command that outlives its turn into one continuation run", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const crypto = yield* SecureRandom.SecureRandom;
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+      let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+      const offeredContinuations: Array<ThreadId> = [];
+      const instanceId = ProviderInstanceId.make("antigravity-background-wake-test");
+      const threadId = ThreadId.make("thread-antigravity-background-wake");
+      const command = {
+        toolCallId: "call_10523763826299200308",
+        name: "run_command",
+        args: { CommandLine: "sleep 70; echo WAKE_MARKER_7391", WaitMsBeforeAsync: 500 },
+        kind: "execute",
+        title: "sleep 70; echo WAKE_MARKER_7391",
+        rawInput: { CommandLine: "sleep 70; echo WAKE_MARKER_7391", WaitMsBeforeAsync: 500 },
+      } as const;
+      const send = (update: Record<string, unknown>) =>
+        sessionUpdate === undefined
+          ? Effect.die("Antigravity sessions must wire a session update handler")
+          : sessionUpdate(
+              normalizeAntigravitySessionUpdate({
+                sessionId: "mock-session-1",
+                update,
+              } as unknown as EffectAcpSchema.SessionNotification),
+            );
+      const adapter = yield* makeAntigravityAdapterV2({
+        instanceId,
+        selfInvocation: yield* resolveSelfInvocation(),
+        continuationRequests: {
+          offer: (request: { readonly threadId: ThreadId }) =>
+            Effect.sync(() => {
+              offeredContinuations.push(request.threadId);
+            }),
+        } as never,
+        makeRuntime: (input) =>
+          makeAntigravityAcpRuntime({
+            ...input,
+            childProcessSpawner,
+            spawn: {
+              command: process.execPath,
+              args: [mockAgentPath],
+              cwd: input.cwd,
+              env: { T3_ACP_ANTIGRAVITY: "1" },
+            },
+          }).pipe(
+            Effect.provideService(SecureRandom.SecureRandom, crypto),
+            Effect.map((runtime): RuntimeService => ({
+              ...runtime,
+              handleSessionUpdate: (handler) =>
+                Effect.sync(() => {
+                  sessionUpdate = handler;
+                }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+              prompt: () =>
+                Effect.gen(function* () {
+                  yield* send({ sessionUpdate: "tool_call", ...command, status: "in_progress" });
+                  yield* send({
+                    sessionUpdate: "agent_message_chunk",
+                    content: { type: "text", text: "Started the background command." },
+                  });
+                  return { stopReason: "end_turn" as const };
+                }),
+            })),
+          ),
+        withProcess: (_stop, task) => task,
+        defaultModel: Effect.undefined,
+      });
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "gemini-test-low" } as const;
+      const session = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-antigravity-background-wake"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* session.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      const startTurn = (ordinal: number, message: "user" | "wake") =>
+        session.startTurn({
+          appThread: {
+            createdBy: "user",
+            creationSource: "web",
+            id: threadId,
+            projectId: ProjectId.make("project-antigravity-background-wake"),
+            title: "Antigravity background wake",
+            providerInstanceId: instanceId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: process.cwd(),
+            activeProviderThreadId: providerThread.id,
+            lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            lastVisitedAt: null,
+            deletedAt: null,
+          },
+          threadId,
+          runId: RunId.make(`run-antigravity-background-wake-${ordinal}`),
+          runOrdinal: ordinal,
+          providerTurnOrdinal: ordinal,
+          attemptId: RunAttemptId.make(`attempt-antigravity-background-wake-${ordinal}`),
+          rootNodeId: NodeId.make(`node-antigravity-background-wake-${ordinal}`),
+          providerThread,
+          message:
+            message === "user"
+              ? {
+                  createdBy: "user",
+                  creationSource: "web",
+                  messageId: MessageId.make(`message-antigravity-background-wake-${ordinal}`),
+                  text: "run the long command in the background",
+                  attachments: [],
+                }
+              : {
+                  createdBy: "agent",
+                  creationSource: "provider",
+                  messageId: MessageId.make(`message-antigravity-background-wake-${ordinal}`),
+                  text: "Background task completed.",
+                  attachments: [],
+                },
+          modelSelection,
+          runtimePolicy,
+        });
+      const untilTurnEnds = session.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+        Effect.map((events) => Array.from(events)),
+      );
+
+      const owesBackgroundWork = session.hasPendingBackgroundWork ?? Effect.succeed(false);
+      const commandStatuses = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
+        events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "command_execution"
+            ? [event.turnItem.status]
+            : [],
+        );
+
+      yield* startTurn(1, "user");
+      yield* untilTurnEnds;
+      assert.isTrue(
+        yield* owesBackgroundWork,
+        "a command still running when the prompt ends must keep the session from being released",
+      );
+      assert.deepStrictEqual(offeredContinuations, []);
+
+      yield* send({
+        sessionUpdate: "tool_call_update",
+        ...command,
+        status: "completed",
+        rawOutput: {
+          output: "Command exited with code 0.\n\nCommand output:\nWAKE_MARKER_7391\r\n",
+          exit_code: 0,
+        },
+        content: [
+          {
+            type: "content",
+            content: {
+              type: "text",
+              text: "Command exited with code 0.\n\nCommand output:\nWAKE_MARKER_7391\r\n",
+            },
+          },
+        ],
+      });
+      assert.deepStrictEqual(offeredContinuations, [threadId]);
+
+      yield* startTurn(2, "wake");
+      yield* send({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "\n\n`WAKE_MARKER_7391`" },
+      });
+      const wakeTurn = yield* untilTurnEnds;
+      assert.deepStrictEqual(commandStatuses(wakeTurn), ["completed"]);
+      assert.isTrue(
+        wakeTurn.some(
+          (event) =>
+            event.type === "message.updated" &&
+            !event.message.streaming &&
+            event.message.text.includes("WAKE_MARKER_7391"),
+        ),
+        "the reply that follows the command must land in the continuation run",
+      );
+      assert.deepStrictEqual(offeredContinuations, [threadId]);
+      assert.isFalse(yield* owesBackgroundWork);
+    }).pipe(Effect.provide(layerSession)),
+  );
+});

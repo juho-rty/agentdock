@@ -1334,6 +1334,155 @@ describe("AcpAdapterV2", () => {
       assert.equal(promptOrdinal, 2, "continuation turn must not dispatch session/prompt");
     }).pipe(Effect.provide(layerTest)),
   );
+  // A wake can start a command that then runs silently for longer than the quiet window.
+  const startWakeWithSilentCommand = Effect.fnUntraced(function* (
+    name: string,
+    promptInactivityTimeout: Duration.Input,
+  ) {
+    type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+    let sessionUpdateHandler: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+    const offered: Array<ThreadId> = [];
+    const quietWindows = yield* Queue.unbounded<Duration.Input>();
+    const instanceId = ProviderInstanceId.make(`acp-test-${name}`);
+    const threadId = ThreadId.make(`thread-acp-${name}`);
+    const adapter = yield* makeAcpAdapterV2({
+      instanceId,
+      selfInvocation: yield* resolveSelfInvocation(),
+      continuationRequests: {
+        offer: (request: { readonly threadId: ThreadId }) =>
+          Effect.sync(() => {
+            offered.push(request.threadId);
+          }),
+      } as never,
+      testHooks: {
+        onDeferredFinalizeScheduled: (debounce) =>
+          Queue.offer(quietWindows, debounce).pipe(Effect.asVoid),
+      },
+      flavor: {
+        driver: ACP_TEST_DRIVER,
+        capabilities: AcpProviderCapabilitiesV2,
+        enablePostSettleContinuation: true,
+        wakeOnPostSettleActivity: true,
+        deferFinalizeForBackgroundWork: true,
+        continuationWorkingFinalizeDebounce: "150 millis",
+        continuationFinalizeDebounce: "50 millis",
+        promptInactivityTimeout,
+        makeRuntime: makeMockRuntime({
+          childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+          mockAgentPath: yield* bundledMockAgentPath,
+          wrapRuntime: (runtime) => ({
+            ...runtime,
+            handleSessionUpdate: (handler) =>
+              Effect.sync(() => {
+                sessionUpdateHandler = handler;
+              }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+            prompt: () => Effect.succeed({ stopReason: "end_turn" as const }),
+          }),
+        }),
+      },
+    });
+    const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      cwd: process.cwd(),
+    });
+    const modelSelection = { instanceId, model: "default" } as const;
+    const runtime = yield* adapter.openSession({
+      threadId,
+      providerSessionId: ProviderSessionId.make(`provider-session-acp-${name}`),
+      modelSelection,
+      runtimePolicy,
+    });
+    const events = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+    yield* runtime.events.pipe(
+      Stream.runForEach((event) => Queue.offer(events, event)),
+      Effect.forkScoped,
+    );
+    const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+    const now = yield* DateTime.now;
+    const untilTerminal = Effect.gen(function* () {
+      while (true) {
+        const event = yield* Queue.take(events);
+        if (event.type === "turn.terminal") return;
+      }
+    });
+    const update = (update: EffectAcpSchema.SessionUpdate) =>
+      sessionUpdateHandler === undefined
+        ? Effect.die("the runtime must wire a session update handler")
+        : sessionUpdateHandler({ sessionId: "mock-session-1", update });
+
+    yield* runtime.startTurn(
+      makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now }),
+    );
+    yield* untilTerminal;
+    yield* update({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-silent",
+      title: "sleep 600",
+      kind: "execute",
+      status: "in_progress",
+      rawInput: { command: "sleep 600" },
+    });
+    assert.deepStrictEqual(offered, [threadId]);
+    yield* runtime.startTurn(
+      makeTurnInput({
+        threadId,
+        providerThread,
+        instanceId,
+        runtimePolicy,
+        now,
+        ordinal: 2,
+        messageCreatedBy: "agent",
+        messageCreationSource: "provider",
+        messageText: "Background task completed.",
+      }),
+    );
+    const terminalSeen = Effect.gen(function* () {
+      const seen = yield* Queue.clear(events);
+      return Array.from(seen).some((event) => event.type === "turn.terminal");
+    });
+    /** Resolves when the turn starts another quiet window while it still awaits its reply. */
+    const nextWorkingWindow = Effect.gen(function* () {
+      while ((yield* Queue.take(quietWindows)) !== "150 millis") {
+        // A window that follows a reply is shorter and is not the one under test.
+      }
+    });
+    return { offered, threadId, update, untilTerminal, terminalSeen, nextWorkingWindow };
+  });
+
+  it.live("keeps a continuation turn open while a command it started still runs", () =>
+    Effect.gen(function* () {
+      const wake = yield* startWakeWithSilentCommand("wake-silent-command", "5 seconds");
+      // Each window after the first starts only because the one before it ran out in silence.
+      yield* wake.nextWorkingWindow;
+      yield* wake.nextWorkingWindow;
+      yield* wake.nextWorkingWindow;
+      assert.isFalse(
+        yield* wake.terminalSeen,
+        "a quiet window must not close the run over a command that is still running",
+      );
+      yield* wake.update({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-silent",
+        status: "completed",
+        rawOutput: { output: "done\n", exit_code: 0 },
+      });
+      yield* wake.update({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "The command finished." },
+      });
+      yield* wake.untilTerminal;
+      assert.deepStrictEqual(wake.offered, [wake.threadId], "the work stays in one run");
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.live("closes a continuation turn whose command stays silent past the inactivity bound", () =>
+    Effect.gen(function* () {
+      const wake = yield* startWakeWithSilentCommand("wake-silent-bound", "400 millis");
+      yield* wake.untilTerminal;
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.live("fails an end_turn the outcome check rejects and restarts before the next turn", () =>
     Effect.gen(function* () {
       const checking = yield* Deferred.make<void>();

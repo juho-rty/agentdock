@@ -1088,7 +1088,10 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
-  const shouldUsePlanSidebarSheet = prefersPlanSidebarSheet && rightPanelState.maximized !== true;
+  // On a phone the panel is always the full-screen sheet. A maximized flag kept for the thread
+  // would swap it for the inline layout, which has no way back to the conversation.
+  const rightPanelMaximizedSaved = rightPanelState.maximized === true && !isMobileViewport;
+  const shouldUsePlanSidebarSheet = prefersPlanSidebarSheet && !rightPanelMaximizedSaved;
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
@@ -1133,8 +1136,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canMaximizeRightPanel = rightPanelOpen;
   // An embedded side chat has no panel; a stale maximized flag would hide its own column.
-  const rightPanelMaximized =
-    !embedded && canMaximizeRightPanel && rightPanelState.maximized === true;
+  const rightPanelMaximized = !embedded && canMaximizeRightPanel && rightPanelMaximizedSaved;
   const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
   const [chatCanvasStore] = useState(createChatCanvasStore);
@@ -4047,7 +4049,8 @@ export default function ChatView(props: ChatViewProps) {
           getShortcutContext={getShortcutContextStable}
           maximized={rightPanelMaximized}
           layoutControls={
-            rightPanelOpen ? (
+            // A phone's sheet is closed by its back control and has no size to change.
+            rightPanelOpen && !isMobileViewport ? (
               <div className="mr-px flex items-center gap-1">
                 <RightPanelMaximizeControl
                   maximized={rightPanelMaximized}

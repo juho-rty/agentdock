@@ -123,6 +123,8 @@ export interface RightPanelTabsProps {
   defaultWidth?: number;
   inlineSize?: PreviewPanelInlineSize;
   layoutControls?: ReactNode;
+  /** Shown before the tabs, such as the way back out of a panel that fills a phone. */
+  leadingControl?: ReactNode;
   surfaces: readonly RightPanelSurface[];
   environmentId: EnvironmentId | null;
   activeSurfaceId: string | null;
@@ -1438,6 +1440,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         )}
         data-right-panel-tabbar
       >
+        {props.leadingControl}
         <ScrollArea
           radius="none"
           ref={attachTabList}

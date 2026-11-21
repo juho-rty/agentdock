@@ -1,8 +1,15 @@
+import { useGT } from "gt-react";
+import { ChevronLeftIcon } from "lucide-react";
+
 import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
+import { Button } from "../ui/button";
 
-type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "maximized"> & {
+type ChatRightPanelProps = Omit<
+  RightPanelTabsProps,
+  "mode" | "inlineSize" | "maximized" | "leadingControl"
+> & {
   readonly sheet: boolean;
   readonly maximized: boolean;
   readonly workspaceLayoutElement: HTMLElement | null;
@@ -27,6 +34,7 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     layoutControls,
     ...tabs
   } = props;
+  const gt = useGT();
   const inlineSize = usePreviewPanelInlineSize({
     container: workspaceLayoutElement,
     widthStorageKey,
@@ -45,6 +53,20 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
         mode="sheet"
         inlineSize={inlineSize}
         layoutControls={layoutControls}
+        // A phone gives the panel the whole screen, so nothing is left to tap outside it.
+        // It stands where the conversation's own back control does.
+        leadingControl={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="mr-1 shrink-0 sm:hidden"
+            aria-label={gt("Back to the conversation")}
+            onClick={onCloseSheet}
+          >
+            <ChevronLeftIcon className="size-5" />
+          </Button>
+        }
       />
     </RightPanelSheet>
   );

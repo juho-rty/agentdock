@@ -14397,6 +14397,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               session.capabilities.sessions.supportsMultipleProviderThreadsPerSession
             )
               continue;
+            // A command the child left running reports to the adapter, not to the roster above.
+            if (yield* sessionHasBackgroundWork(session, child.providerThreads)) continue;
             yield* dispatchWithReceiptEffect({
               type: "provider-session.detach",
               commandId: CommandId.make(

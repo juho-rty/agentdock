@@ -3,7 +3,7 @@ import { EnvironmentId, ThreadId, type ProjectReadFileResult } from "@t3tools/co
 import { AsyncResult } from "effect/reactivity";
 import { StrictMode, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 import { act, fakeTimers, render } from "../../../test/render";
 import appCss from "~/index.css?inline";
 import { isMacPlatform } from "~/lib/utils";
@@ -292,6 +292,8 @@ describe("source file focus", () => {
   it("focuses the editor when a file row is clicked or activated with Enter", async () => {
     using _settings = setup();
     localStorage.setItem("t3code.fileExplorerOpen", "true");
+    // Wide enough for the tree to sit beside the file; a phone shows one at a time.
+    await page.viewport(1280, 800);
     const style = document.createElement("style");
     style.textContent = appCss;
     document.head.append(style);
@@ -329,6 +331,58 @@ describe("source file focus", () => {
     (fileRow.element() as HTMLElement).focus();
     await userEvent.keyboard("{Enter}");
     await vi.waitFor(editorHasFocus);
+  });
+});
+
+describe("file explorer on a phone", () => {
+  it("shows the file or the tree, and returns to the file when one is chosen", async () => {
+    using _settings = setup();
+    // A choice saved on a wide screen must not put the tree beside the file here.
+    localStorage.setItem("t3code.fileExplorerOpen", "true");
+    const size = [window.innerWidth, window.innerHeight] as const;
+    await page.viewport(390, 844);
+    const style = document.createElement("style");
+    style.textContent = appCss;
+    document.head.append(style);
+    await using _restore = {
+      [Symbol.asyncDispose]: async () => {
+        style.remove();
+        await page.viewport(size[0], size[1]);
+      },
+    };
+    await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["typescript"] });
+    state.file = {
+      relativePath: "server.ts",
+      contents: "const server = 1;\n",
+      byteLength: 18,
+      truncated: false,
+    };
+    await using screen = await render(
+      <div {...workspaceAreaProps("panel", 1, "Workspace panel")} className="h-dvh w-full">
+        <div data-right-panel-surface-content>{filePreview("server.ts")}</div>
+      </div>,
+    );
+    const fileShown = () => {
+      const column = screen.container.querySelector("[data-file-content-focus]")?.parentElement;
+      return column != null && getComputedStyle(column).display !== "none";
+    };
+    const fileRow = screen.getByRole("treeitem", { name: "server.ts" });
+
+    await vi.waitFor(() => expect(fileShown()).toBe(true));
+    await expect.element(fileRow).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Show file explorer" }));
+    await expect.element(fileRow).toBeVisible();
+    expect(fileShown()).toBe(false);
+    // The tree has the whole width, not the strip it keeps beside a file.
+    const tree = screen.getByRole("complementary", { name: "File explorer" });
+    expect(tree.element().getBoundingClientRect().width).toBe(390);
+
+    await userEvent.click(fileRow);
+    await vi.waitFor(() => expect(fileShown()).toBe(true));
+    await expect.element(fileRow).not.toBeInTheDocument();
+    // The keyboard must not rise over a file the reader only meant to look at.
+    expect(deepActiveElement()?.matches("[data-content]")).toBe(false);
   });
 });
 

@@ -21,6 +21,7 @@ import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useComposerHandleContext } from "~/composerHandleContext";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
@@ -99,7 +100,7 @@ function FileSearchField({
 }) {
   const gt = useGT();
   return (
-    <InputGroup variant="ghost" className="h-7 min-w-0 flex-1">
+    <InputGroup variant="ghost" className="h-7 min-w-0 flex-1 pointer-coarse:h-9">
       <InputGroupInput
         ref={ref}
         type="search"
@@ -272,6 +273,8 @@ export default function FileBrowserPanel({
   );
 
   const loadingDirectoriesRef = useRef(loadingDirectories);
+  // A finger needs taller rows and larger names than a mouse pointer does.
+  const touch = useMediaQuery({ pointer: "coarse" });
   const dragMention = createFileTreeDragMentionController(
     hostFolder ? { mentionPath: (path: string) => joinHostPath(cwd, path) } : {},
   );
@@ -285,7 +288,7 @@ export default function FileBrowserPanel({
       },
     },
     dragAndDrop: { canDrop: () => false },
-    density: "compact",
+    density: touch ? "relaxed" : "compact",
     fileTreeSearchMode: "hide-non-matches",
     flattenEmptyDirectories: true,
     initialExpansion: "closed",
@@ -547,7 +550,7 @@ export default function FileBrowserPanel({
       }}
     >
       <div
-        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
+        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 pointer-coarse:h-12 pointer-coarse:min-h-12 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
         <RefreshFilesButton isPending={isPending} onRefresh={handleRefresh} />
@@ -627,7 +630,10 @@ export default function FileBrowserPanel({
           model={model}
           aria-label={gt("{projectName} files", { projectName })}
           className="min-h-0 flex-1 overflow-hidden"
-          style={pierreTreeStyle(resolvedTheme)}
+          style={{
+            ...pierreTreeStyle(resolvedTheme),
+            ...(touch ? { ["--trees-font-size-override" as string]: "0.875rem" } : {}),
+          }}
         />
       )}
     </div>

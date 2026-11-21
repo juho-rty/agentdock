@@ -292,6 +292,8 @@ export function makeAntigravityAcpAdapterFlavor(
     wakeOnPostSettleActivity: true,
     continuationWorkingFinalizeDebounce: "90 seconds",
     continuationFinalizeDebounce: "5 seconds",
+    // `run_command` turns async after its wait; agy then ends the prompt and reports the exit later.
+    toolOutlivesCompletedTurn: (toolCall) => toolCall.kind === "execute",
     deferFinalizeForBackgroundWork: true,
     // 1.4.5 returns the root trajectory's Gemini usageMetadata delta; 1.4.1 returns none.
     reportsPerTurnPromptUsage: true,

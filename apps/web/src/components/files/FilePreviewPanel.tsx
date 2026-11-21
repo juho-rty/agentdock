@@ -69,6 +69,7 @@ import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
@@ -1302,12 +1303,20 @@ export default function FilePreviewPanel({
     serverConfig?.shellRevealInFileManager === true;
   // Everything preview-related keys off previewPath; a folder has no preview.
   const previewPath = isFolder ? null : relativePath;
-  const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
+  const [savedExplorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
+  // A phone has room for the tree or the file, not both. The tree is opened over one file,
+  // and choosing any file in it, that one included, puts the file back in view.
+  const isPhone = useMediaQuery("max-sm");
+  const [phoneExplorerPath, setPhoneExplorerPath] = useState<string | null>(null);
+  const explorerOpen = isPhone
+    ? phoneExplorerPath !== null && phoneExplorerPath === previewPath
+    : savedExplorerOpen;
   const showExplorer = shouldShowFileExplorer({
     relativePath: previewPath,
     explorerOpen,
     attachmentOpen: attachment !== undefined,
   });
+  const explorerCoversFile = isPhone && showExplorer && previewPath !== null;
   const [renderMarkdownPreferred, setRenderMarkdownPreferred] = useLocalStorage(
     RENDER_MARKDOWN_STORAGE_KEY,
     false,
@@ -1410,6 +1419,11 @@ export default function FilePreviewPanel({
       );
     const path = row?.getAttribute("data-item-path");
     if (!path || path.endsWith("/")) return;
+    if (isPhone) {
+      // The tap picks the file to look at. Focusing the editor would raise the keyboard over it.
+      setPhoneExplorerPath(null);
+      return;
+    }
     requestWorkspaceFocus({ area: "panel", selector: "[data-file-content-focus]" });
   };
   const rendered = isMermaid
@@ -1475,6 +1489,10 @@ export default function FilePreviewPanel({
   }, [breadcrumbPath, breadcrumbTrail]);
 
   const toggleExplorer = () => {
+    if (isPhone) {
+      setPhoneExplorerPath((current) => (current === previewPath ? null : previewPath));
+      return;
+    }
     setExplorerOpen((current) => {
       const next = !current;
       try {
@@ -1638,7 +1656,10 @@ export default function FilePreviewPanel({
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div
-          className={cn("min-w-0 flex-1 flex-col overflow-hidden", previewPath ? "flex" : "hidden")}
+          className={cn(
+            "min-w-0 flex-1 flex-col overflow-hidden",
+            previewPath && !explorerCoversFile ? "flex" : "hidden",
+          )}
         >
           {mayOpenEditor ? (
             // Panel focus lands here and passes to the editor once it attaches. sr-only keeps the
@@ -1833,7 +1854,7 @@ export default function FilePreviewPanel({
           ) : null}
         </div>
         {showExplorer ? (
-          <FileExplorerPane resizable={Boolean(previewPath)}>
+          <FileExplorerPane resizable={Boolean(previewPath) && !explorerCoversFile}>
             <div
               className="contents"
               onClick={focusEditorOnTreeRowClickOrEnter}
