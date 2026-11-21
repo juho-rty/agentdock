@@ -65,8 +65,7 @@ type ProviderEntries = ReadonlyMap<string, ProviderInstanceEntry>;
 
 function FilterMenu(props: {
   readonly ariaLabel: string;
-  /** Omitted when one option must stay chosen. */
-  readonly allLabel?: string;
+  readonly allLabel: string;
   readonly value: string | null;
   readonly options: ReadonlyArray<{ readonly value: string; readonly label: string }>;
   readonly onChange: (value: string | null) => void;
@@ -96,11 +95,9 @@ function FilterMenu(props: {
           value={props.value ?? ALL_VALUE}
           onValueChange={(value) => props.onChange(value === ALL_VALUE ? null : String(value))}
         >
-          {props.allLabel === undefined ? null : (
-            <MenuRadioItem value={ALL_VALUE} closeOnClick>
-              {props.allLabel}
-            </MenuRadioItem>
-          )}
+          <MenuRadioItem value={ALL_VALUE} closeOnClick>
+            {props.allLabel}
+          </MenuRadioItem>
           {props.options.map((option) => (
             <MenuRadioItem key={option.value} value={option.value} closeOnClick>
               <span className="block truncate">{option.label}</span>
@@ -303,9 +300,6 @@ export function MobileHomeView(props: {
   readonly onFiltersChange: (filters: MobileHomeFilters) => void;
   readonly threadMode: SidebarThreadMode;
   readonly onThreadModeChange: (mode: SidebarThreadMode) => void;
-  /** The computer the Chat tab lists and starts chats on. */
-  readonly chatEnvironmentId: string | null;
-  readonly onChatEnvironmentChange: (environmentId: string) => void;
   readonly sections: MobileHomeSections<EnvironmentThreadShell>;
   /** False while an environment could still deliver threads. */
   readonly loaded: boolean;
@@ -318,7 +312,7 @@ export function MobileHomeView(props: {
   const contentArea = workspaceAreaProps("home", 1, gt("Home", { $context: "the home screen" }));
   const { filters, sections } = props;
   const chatMode = props.threadMode === "chat";
-  const filtered = !chatMode && (filters.environmentId !== null || filters.projectKey !== null);
+  const filtered = filters.environmentId !== null || filters.projectKey !== null;
   // Chats have no projects, and one filtered project needs no heading: the filter names it.
   const singleList = chatMode || filters.projectKey !== null;
   const empty = sections.threads.length === 0 && sections.working.length === 0;
@@ -384,20 +378,9 @@ export function MobileHomeView(props: {
             </Toggle>
           </ToggleGroup>
         </div>
-        <div className="flex items-center gap-2 px-5 py-3">
-          {chatMode ? (
-            <FilterMenu
-              ariaLabel={gt("Computer for chats")}
-              value={props.chatEnvironmentId}
-              options={props.environments.map((environment) => ({
-                value: environment.environmentId,
-                label: environment.label,
-              }))}
-              onChange={(environmentId) => {
-                if (environmentId !== null) props.onChatEnvironmentChange(environmentId);
-              }}
-            />
-          ) : (
+        {/* Chat lists every computer's chats together, so it has nothing to filter. */}
+        {chatMode ? null : (
+          <div className="flex items-center gap-2 px-5 py-3">
             <FilterMenu
               ariaLabel={gt("Filter threads by environment")}
               allLabel={gt("All environments")}
@@ -408,8 +391,6 @@ export function MobileHomeView(props: {
               }))}
               onChange={(environmentId) => props.onFiltersChange({ ...filters, environmentId })}
             />
-          )}
-          {chatMode ? null : (
             <FilterMenu
               ariaLabel={gt("Filter threads by project")}
               allLabel={gt("All projects")}
@@ -420,18 +401,18 @@ export function MobileHomeView(props: {
               }))}
               onChange={(projectKey) => props.onFiltersChange({ ...filters, projectKey })}
             />
-          )}
-          {filtered ? (
-            <button
-              type="button"
-              aria-label={gt("Reset thread filters")}
-              onClick={() => props.onFiltersChange(NO_MOBILE_HOME_FILTERS)}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent"
-            >
-              <XIcon aria-hidden className="size-4" />
-            </button>
-          ) : null}
-        </div>
+            {filtered ? (
+              <button
+                type="button"
+                aria-label={gt("Reset thread filters")}
+                onClick={() => props.onFiltersChange(NO_MOBILE_HOME_FILTERS)}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-accent"
+              >
+                <XIcon aria-hidden className="size-4" />
+              </button>
+            ) : null}
+          </div>
+        )}
         {sections.working.length > 0 ? (
           <section className="mb-2">
             <button
@@ -543,8 +524,6 @@ export function MobileHome() {
     threadMode,
     setThreadMode,
     chatKeys,
-    chatEnvironmentId,
-    setChatEnvironmentId,
   } = useMobileHomeFilters();
   const [workingExpanded, setWorkingExpanded] = useLocalStorage(
     MOBILE_HOME_WORKING_EXPANDED_STORAGE_KEY,
@@ -571,12 +550,10 @@ export function MobileHome() {
       onFiltersChange={setFilters}
       threadMode={threadMode}
       onThreadModeChange={setThreadMode}
-      chatEnvironmentId={chatEnvironmentId}
-      onChatEnvironmentChange={setChatEnvironmentId}
       sections={buildMobileHomeSections({
         threads: filterThreadsForMode(threads, threadMode, chatKeys),
         delegatedUnderParent,
-        environmentId: threadMode === "chat" ? chatEnvironmentId : filters.environmentId,
+        environmentId: threadMode === "chat" ? null : filters.environmentId,
         projectOption,
       })}
       loaded={bootstrapped}

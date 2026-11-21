@@ -13,9 +13,7 @@ import { useProjects } from "../../state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "../../state/environments";
 import {
   filterMobileHomeProjectOptions,
-  MOBILE_CHAT_ENVIRONMENT_STORAGE_KEY,
   MOBILE_HOME_FILTERS_STORAGE_KEY,
-  MobileChatEnvironmentSchema,
   MobileHomeFiltersSchema,
   NO_MOBILE_HOME_FILTERS,
   resolveMobileChatEnvironment,
@@ -49,13 +47,8 @@ export function useMobileHomeFilters() {
     SidebarThreadModeSchema,
   );
 
-  const [storedChatEnvironmentId, setChatEnvironmentId] = useLocalStorage<
-    string | null,
-    string | null
-  >(MOBILE_CHAT_ENVIRONMENT_STORAGE_KEY, null, MobileChatEnvironmentSchema);
   const environmentIds = environments.map((environment) => environment.environmentId);
   const chatEnvironmentId = resolveMobileChatEnvironment({
-    stored: storedChatEnvironmentId,
     environmentIds,
     machineById,
   });
@@ -93,6 +86,5 @@ export function useMobileHomeFilters() {
     setThreadMode,
     chatKeys: chatProjectKeys(projects),
     chatEnvironmentId,
-    setChatEnvironmentId,
   };
 }

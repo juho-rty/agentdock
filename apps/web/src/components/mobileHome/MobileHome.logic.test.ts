@@ -230,19 +230,12 @@ describe("resolveMobileChatEnvironment", () => {
     ["laptop", "laptop"],
     ["mini", "mac-mini"],
   ]);
-  it("keeps chats on the Mac mini unless another computer was picked", () => {
-    const environmentIds = ["laptop", "mini"];
-    expect(resolveMobileChatEnvironment({ stored: null, environmentIds, machineById })).toBe(
+  it("starts new chats on the Mac mini, else the first computer", () => {
+    expect(resolveMobileChatEnvironment({ environmentIds: ["laptop", "mini"], machineById })).toBe(
       "mini",
     );
-    expect(resolveMobileChatEnvironment({ stored: "laptop", environmentIds, machineById })).toBe(
+    expect(resolveMobileChatEnvironment({ environmentIds: ["laptop"], machineById })).toBe(
       "laptop",
     );
-    expect(resolveMobileChatEnvironment({ stored: "gone", environmentIds, machineById })).toBe(
-      "mini",
-    );
-    expect(
-      resolveMobileChatEnvironment({ stored: null, environmentIds: ["laptop"], machineById }),
-    ).toBe("laptop");
   });
 });
