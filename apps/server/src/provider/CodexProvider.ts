@@ -606,10 +606,20 @@ const requestCodexChatGptModels = Effect.fn("requestCodexChatGptModels")(functio
 /** Set originator at spawn; the pre-initialize refresh otherwise overwrites shared cache with plain-CLI models. */
 export const codexAppServerEnvironment = (
   environment: NodeJS.ProcessEnv | undefined,
-): NodeJS.ProcessEnv => ({
-  CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME,
-  ...environment,
-});
+): NodeJS.ProcessEnv => {
+  const sanitized: NodeJS.ProcessEnv = {
+    CODEX_INTERNAL_ORIGINATOR_OVERRIDE: CODEX_CLIENT_NAME,
+  };
+  if (environment !== undefined) {
+    for (const [key, value] of Object.entries(environment)) {
+      const upper = key.toUpperCase();
+      if (upper !== "ELECTRON_RUN_AS_NODE" && upper !== "CHROME_CRASHPAD_PIPE_NAME") {
+        sanitized[key] = value;
+      }
+    }
+  }
+  return sanitized;
+};
 
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {

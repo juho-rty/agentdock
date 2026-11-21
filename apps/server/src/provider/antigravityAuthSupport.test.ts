@@ -103,10 +103,10 @@ describe("Antigravity process environment", () => {
         ANTIGRAVITY_HARNESS_PATH: "/release/harness",
         BROWSER: profile.browserCommand,
         PYTHONUNBUFFERED: "1",
-        ELECTRON_RUN_AS_NODE: "1",
         TMPDIR: profile.tempDirectory,
       },
     });
+    expect(spawn.env).not.toHaveProperty("ELECTRON_RUN_AS_NODE");
   });
 
   it("runs the agy CLI as `agy acp` without a harness", () => {
@@ -558,6 +558,13 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       });
       expect(profile.browserCommand).not.toContain("/packaged/t3");
       expect(yield* fs.exists(profile.acpDirectory)).toBe(true);
+      const helperScriptPath = path.join(
+        profile.acpDirectory,
+        (yield* HostProcess.Platform) === "win32" ? "browser-helper.ps1" : "browser-helper.sh",
+      );
+      const helperScript = yield* fs.readFileString(helperScriptPath);
+      expect(helperScript).not.toContain("/packaged/t3");
+      expect(helperScript).toContain("ELECTRON_RUN_AS_NODE");
     }).pipe(
       Effect.provideService(HostProcess.IsExecutable, true),
       Effect.provideService(HostProcess.ExecutablePath, "/packaged/t3"),

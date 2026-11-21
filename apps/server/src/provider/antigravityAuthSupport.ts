@@ -198,6 +198,10 @@ function quoteBrowserArgument(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
+function quotePowerShellArgument(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 function antigravityEnvironment(
   profile: AntigravityProfile,
   baseEnv: NodeJS.ProcessEnv,
@@ -218,6 +222,8 @@ function antigravityEnvironment(
         : {};
   // Each launch unpacks about 1 GB; use T3-owned temp so the driver can reclaim files after force-kill.
   const tempDirectory = runtimeTempDirectory ?? profile.tempDirectory;
+  // Never set ELECTRON_RUN_AS_NODE on the agent itself: commands it runs inherit its env, so
+  // Electron apps opened from tool shells (AgentDock itself, VS Code) would boot as Node and exit.
   return {
     ...environment,
     ...credential,
@@ -230,7 +236,6 @@ function antigravityEnvironment(
     AGY_ACP_FORCE_FILE_STORAGE: "1",
     BROWSER: profile.browserCommand,
     PYTHONUNBUFFERED: "1",
-    ELECTRON_RUN_AS_NODE: "1",
     ...(profile.platform === "win32"
       ? { TEMP: tempDirectory, TMP: tempDirectory }
       : { TMPDIR: tempDirectory }),
@@ -338,25 +343,62 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
           }),
       ),
     ));
+  const geminiHome = path.resolve(input.profileDirectory);
+  const acpDirectory = path.join(geminiHome, "antigravity-acp");
+  const tempDirectory = input.tempDirectory ?? path.join(acpDirectory, "tmp");
   const helperExecutable =
     platform === "win32" ? runtimeExecutablePath.replaceAll("\\", "/") : runtimeExecutablePath;
-  const browserArguments = [helperExecutable, "-e", browserHelperSource, "--", "%s"];
+  const browserWrapperFilePath = path.join(
+    acpDirectory,
+    platform === "win32" ? "browser-helper.ps1" : "browser-helper.sh",
+  );
+  const browserWrapperCommandPath =
+    platform === "win32" ? browserWrapperFilePath.replaceAll("\\", "/") : browserWrapperFilePath;
+  const browserArguments =
+    platform === "win32"
+      ? [
+          "powershell.exe",
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          browserWrapperCommandPath,
+          "%s",
+        ]
+      : [browserWrapperCommandPath, "%s"];
   const browserCommand = browserArguments.map(quoteBrowserArgument).join(" ");
+  const browserWrapperContent =
+    platform === "win32"
+      ? [
+          "$env:ELECTRON_RUN_AS_NODE = '1'",
+          `& ${[helperExecutable, "-e", browserHelperSource, "--"].map(quotePowerShellArgument).join(" ")} @args`,
+          "exit $LASTEXITCODE",
+          "",
+        ].join("\r\n")
+      : [
+          "#!/bin/sh",
+          "export ELECTRON_RUN_AS_NODE=1",
+          `exec ${[helperExecutable, "-e", browserHelperSource, "--"].map(quoteBrowserArgument).join(" ")} "$@"`,
+          "",
+        ].join("\n");
+  const browserDelimiter = platform === "win32" ? ";" : ":";
   if (
-    browserCommand.includes(platform === "win32" ? ";" : ":") ||
+    browserCommand.includes(browserDelimiter) ||
+    helperExecutable.includes(browserDelimiter) ||
     helperExecutable.includes("\r") ||
     helperExecutable.includes("\n") ||
     helperExecutable.includes("\0") ||
-    helperExecutable.includes("%s")
+    helperExecutable.includes("%s") ||
+    browserWrapperCommandPath.includes("\r") ||
+    browserWrapperCommandPath.includes("\n") ||
+    browserWrapperCommandPath.includes("\0") ||
+    browserWrapperCommandPath.includes("%s")
   ) {
     return yield* authSupportError(
       "The T3 runtime path cannot be used to suppress Antigravity browser launches.",
     );
   }
-
-  const geminiHome = path.resolve(input.profileDirectory);
-  const acpDirectory = path.join(geminiHome, "antigravity-acp");
-  const tempDirectory = input.tempDirectory ?? path.join(acpDirectory, "tmp");
   let caBundlePath: string | undefined;
   if (platform === "linux") {
     // Bundled Python may look for certificates at paths absent on this distribution.
@@ -391,7 +433,7 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
   yield* Effect.gen(function* () {
     const child = yield* spawner.spawn(
       ChildProcess.make(helperExecutable, ["-e", browserHelperSource, "--", browserPreflightUrl], {
-        env: environment,
+        env: { ...environment, ELECTRON_RUN_AS_NODE: "1" },
         extendEnv: false,
         shell: false,
       }),
@@ -444,6 +486,22 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
           ),
         );
     }
+  }
+  yield* fs
+    .writeFileString(browserWrapperFilePath, browserWrapperContent)
+    .pipe(
+      Effect.mapError(() =>
+        authSupportError("The Antigravity browser helper could not be written."),
+      ),
+    );
+  if (platform !== "win32") {
+    yield* fs
+      .chmod(browserWrapperFilePath, 0o700)
+      .pipe(
+        Effect.mapError(() =>
+          authSupportError("The Antigravity browser helper permissions could not be set."),
+        ),
+      );
   }
   yield* fs
     .writeFileString(path.join(acpDirectory, "settings.json"), antigravityProfileSettings(auth))

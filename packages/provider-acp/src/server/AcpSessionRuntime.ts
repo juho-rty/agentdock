@@ -257,6 +257,26 @@ export function parseCgroup2Mounts(
   return mounts;
 }
 
+const INHERITED_ELECTRON_RUNTIME_ENV_KEYS = new Set([
+  "ELECTRON_RUN_AS_NODE",
+  "CHROME_CRASHPAD_PIPE_NAME",
+]);
+
+/**
+ * Desktop builds run the backend server inside Electron with `ELECTRON_RUN_AS_NODE=1`. Strip
+ * Electron's Node-mode and Crashpad variables from inherited host environments so Electron apps
+ * launched from an ACP agent's shell (AgentDock itself, VS Code) start as GUI apps instead of Node.
+ */
+export function stripInheritedElectronRuntimeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!INHERITED_ELECTRON_RUNTIME_ENV_KEYS.has(key.toUpperCase())) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 export function wrapCommandForLinuxCgroup(
   lease: AcpLinuxCgroupLease,
   command: string,
@@ -1392,12 +1412,16 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
       ),
     );
 
+  const shouldExtendEnv = options.spawn.extendEnv ?? true;
+  const baseSpawnEnv = shouldExtendEnv
+    ? { ...stripInheritedElectronRuntimeEnv(process.env), ...options.spawn.env }
+    : options.spawn.env;
   const spawnCommand =
     options.spawn.shell === false
       ? { command: options.spawn.command, args: options.spawn.args, shell: false }
       : yield* resolveSpawnCommand(options.spawn.command, options.spawn.args, {
-          ...(options.spawn.env ? { env: options.spawn.env } : {}),
-          extendEnv: options.spawn.extendEnv ?? true,
+          ...(baseSpawnEnv ? { env: baseSpawnEnv } : {}),
+          extendEnv: false,
         });
   const linuxCgroupLease =
     options.ownDescendantProcessGroups === true && options.processGroupPlatform === "linux"
@@ -1420,6 +1444,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
       ),
     );
   }
+  const effectiveLookupEnv = baseSpawnEnv ?? stripInheritedElectronRuntimeEnv(process.env);
   const containedTargetCommand =
     linuxCgroupLease === undefined || NodePath.isAbsolute(spawnCommand.command)
       ? spawnCommand.command
@@ -1427,7 +1452,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           const resolved = resolveLinuxCgroupTargetCommand(
             spawnCommand.command,
             options.spawn.cwd ?? options.cwd,
-            { ...process.env, ...options.spawn.env },
+            effectiveLookupEnv,
           );
           if (resolved !== undefined) return resolved;
           return yield* new EffectAcpErrors.AcpSpawnError({
@@ -1444,7 +1469,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           args: spawnCommand.args,
           name: "acp",
           threadId: yield* AgentScopeThreadId,
-          env: { ...process.env, ...options.spawn.env },
+          env: effectiveLookupEnv,
         });
   const scopedSpawnCommand =
     scopedLaunch === undefined ? spawnCommand : { ...scopedLaunch, shell: false };
@@ -1462,9 +1487,9 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
         };
   const spawnEnvironment =
     linuxCgroupLease === undefined
-      ? options.spawn.env
+      ? baseSpawnEnv
       : {
-          ...options.spawn.env,
+          ...baseSpawnEnv,
           ELECTRON_RUN_AS_NODE: "1",
           T3_ACP_CGROUP_WRAPPER: "1",
         };
@@ -1473,7 +1498,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
       ChildProcess.make(containedSpawnCommand.command, containedSpawnCommand.args, {
         ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
         ...(spawnEnvironment ? { env: spawnEnvironment } : {}),
-        extendEnv: options.spawn.extendEnv ?? true,
+        extendEnv: false,
         // Windows `detached` gives the child its own console, which breaks stdio pipes through
         // `.cmd` shims; taskkill /T cleans up the tree there without it.
         ...(options.ownDetachedProcessGroup === undefined

@@ -73,6 +73,18 @@ installed apps look for updates in the public `juho-rty/agentdock-releases` (ins
 no source). Windows updates itself from there. macOS refuses to auto-update ad-hoc signed
 builds, so install the new DMG from `Dropbox/Apps/AgentDock-installers` instead.
 
+Agent-run updates of linked machines (only when the owner asks) download the release into a
+per-version folder (`/Users/Shared/agentdock-maintenance/update-<version>/` on a Mac,
+`C:\Users\Public\agentdock-maintenance\v<version>\` on Windows), check its sha512 against
+`latest*.yml`, and finish with `scripts/agentdock-update-mac.sh` or
+`scripts/agentdock-update-windows.ps1`. Both scripts self-detach outside the agent's process
+tree (`launchctl bootstrap gui/<uid>` on macOS, WMI `Win32_Process.Create` on Windows) and
+strip `ELECTRON_RUN_AS_NODE` so the relaunched Electron app never boots in Node mode or gets
+reaped when the old app quits. Paste the script into the task rather than having the agent
+copy the previous folder's script. Once the new version is running, the scripts delete the
+backup, staged app, download and older version folders. Each kept a full app copy (about
+1.3 GB) per update before that.
+
 ## Phone
 
 From anywhere: in **Settings -> Sharing & access**, turn on **Phone access (Cloudflare)**.

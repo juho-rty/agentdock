@@ -11,6 +11,23 @@ import * as Exit from "effect/Exit";
 
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 
+describe("AcpSessionRuntime Electron runtime environment stripping", () => {
+  it("strips ELECTRON_RUN_AS_NODE and CHROME_CRASHPAD_PIPE_NAME case-insensitively", () => {
+    const sanitized = AcpSessionRuntime.stripInheritedElectronRuntimeEnv({
+      PATH: "/usr/bin:/bin",
+      ELECTRON_RUN_AS_NODE: "1",
+      electron_run_as_node: "1",
+      CHROME_CRASHPAD_PIPE_NAME: "/tmp/crashpad",
+      chrome_crashpad_pipe_name: "/tmp/crashpad2",
+      CUSTOM_VAR: "kept",
+    });
+    expect(sanitized).toEqual({
+      PATH: "/usr/bin:/bin",
+      CUSTOM_VAR: "kept",
+    });
+  });
+});
+
 const identity = (
   pid: number,
   ppid: number,
