@@ -47,7 +47,10 @@ const TokenResponse = Schema.Struct({
   access_token: Schema.NonEmptyString,
   expires_in: Schema.Number.check(Schema.isGreaterThan(0)),
 });
-const UserInfo = Schema.Struct({ id: Schema.NonEmptyString });
+const UserInfo = Schema.Struct({
+  id: Schema.NonEmptyString,
+  email: Schema.optional(Schema.String),
+});
 const Quota = Schema.Struct({
   remainingFraction: Schema.optional(Schema.Number),
   resetTime: Schema.optional(Schema.String),
@@ -166,9 +169,19 @@ const sha256 = Effect.fnUntraced(function* (text: string) {
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 });
 
-/** Keys an account by its Google ID, which matches across machines and hubs; refresh tokens do not. */
+const emailFingerprint = (email: string) =>
+  sha256(`google-account-email\0${email.trim().toLowerCase()}`);
+
+/**
+ * Keys an account by its e-mail, the one identity every sign-in shows: a keychain login logs the
+ * address and has no Google ID to offer, so an ID key listed one account once per sign-in method.
+ */
 export const antigravityAccountFingerprint = (userInfo: unknown) =>
-  decodeUserInfo(userInfo).pipe(Effect.flatMap((info) => sha256(`google-account\0${info.id}`)));
+  decodeUserInfo(userInfo).pipe(
+    Effect.flatMap((info) =>
+      info.email?.trim() ? emailFingerprint(info.email) : sha256(`google-account\0${info.id}`),
+    ),
+  );
 
 /** Windows from a `retrieveUserQuotaSummary` answer requested at `requestedAt`. */
 export const antigravitySummaryWindows = (response: unknown, requestedAt: number) =>
@@ -310,7 +323,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
       const text = head.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
       const email = [...text.matchAll(KEYCHAIN_SIGN_IN)].at(-1)?.[1];
       if (email === undefined) continue;
-      const account = yield* sha256(`google-account-email\0${email.toLowerCase()}`);
+      const account = yield* emailFingerprint(email);
       signInLog = { name, account };
       return account;
     }
@@ -374,7 +387,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
         ),
       ).pipe(Effect.flatMap(decodeTokenResponse));
       accessToken = refreshed.access_token;
-      // Use Google account IDs to merge accounts across environments; refresh tokens differ per machine.
+      // Name the account, not the credential: refresh tokens differ per machine.
       account = yield* request(
         HttpClientRequest.get("https://www.googleapis.com/oauth2/v2/userinfo").pipe(
           HttpClientRequest.setHeaders({ Authorization: `Bearer ${accessToken}` }),

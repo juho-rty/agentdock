@@ -63,6 +63,8 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
     tokenStatus?: number;
     refreshToken?: string;
     userId?: string;
+    /** The address userinfo reports; null leaves it out, as a sign-in without the e-mail scope does. */
+    userEmail?: string | null;
     userInfoAt?: number;
     missingToken?: boolean;
     readUsageCommand?: Effect.Effect<string | undefined>;
@@ -108,7 +110,12 @@ const fixture = Effect.fn("AntigravityUsageTest.fixture")(function* (
         return HttpClientResponse.fromWeb(
           request,
           options.userId
-            ? Response.json({ id: options.userId, email: "someone@example.com" })
+            ? Response.json({
+                id: options.userId,
+                ...(options.userEmail === null
+                  ? {}
+                  : { email: options.userEmail ?? `${options.userId}@example.com` }),
+              })
             : Response.json({}, { status: 403 }),
         );
       }
@@ -590,7 +597,20 @@ describe("Antigravity subscription limits", () => {
       expect(machineA.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
       expect(machineB.credentialFingerprint).toBe(machineA.credentialFingerprint);
       expect(otherAccount.credentialFingerprint).not.toBe(machineA.credentialFingerprint);
-      expect(JSON.stringify(machineA)).not.toMatch(/google-user-1|someone@example.com/);
+      expect(JSON.stringify(machineA)).not.toMatch(/google-user-1|example\.com/);
+      // A sign-in without the e-mail scope still has its Google ID to go by.
+      const idOnly = (refreshToken: string, userId: string) =>
+        fixture({ refreshToken, userId, userEmail: null }).pipe(
+          Effect.flatMap((usage) => usage.probe),
+        );
+      const scopelessA = yield* idOnly("refresh-d", "google-user-3");
+      expect(scopelessA.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      expect((yield* idOnly("refresh-e", "google-user-3")).credentialFingerprint).toBe(
+        scopelessA.credentialFingerprint,
+      );
+      expect((yield* idOnly("refresh-f", "google-user-4")).credentialFingerprint).not.toBe(
+        scopelessA.credentialFingerprint,
+      );
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
@@ -824,6 +844,18 @@ describe("Antigravity subscription limits", () => {
         (yield* otherAccount.probe).credentialFingerprint,
       );
       expect(machineA.requests).toEqual([]);
+
+      // One machine keeps the login in the keychain and another in a token file: still one account.
+      const tokenFile = (userEmail: string) =>
+        fixture({ userId: "google-user-9", userEmail }).pipe(
+          Effect.flatMap((usage) => usage.probe),
+        );
+      expect((yield* tokenFile("SomeOne@example.com")).credentialFingerprint).toBe(
+        first.credentialFingerprint,
+      );
+      expect((yield* tokenFile("third@example.com")).credentialFingerprint).not.toBe(
+        first.credentialFingerprint,
+      );
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
