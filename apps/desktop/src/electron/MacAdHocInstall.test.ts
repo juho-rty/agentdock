@@ -99,4 +99,8 @@ describe.skipIf(NodeOS.type() !== "Darwin")("MAC_SWAP_SCRIPT", () => {
   it("aborts before moving the bundle if the old process is still alive after waiting", () => {
     expect(MAC_SWAP_SCRIPT).toContain('if kill -0 "$pid" 2>/dev/null; then exit 1; fi');
   });
+
+  it("clears ELECTRON_RUN_AS_NODE before relaunching the updated app", () => {
+    expect(MAC_SWAP_SCRIPT).toContain("unset ELECTRON_RUN_AS_NODE CHROME_CRASHPAD_PIPE_NAME");
+  });
 });

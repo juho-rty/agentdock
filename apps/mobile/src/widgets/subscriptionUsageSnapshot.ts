@@ -247,7 +247,8 @@ function subscriptionUsageProps(
         const selectedWindows = [
           ...new Set([
             sortedWindows.find((window) => window.kind === "session"),
-            sortedWindows.find((window) => window.kind === "weekly"),
+            sortedWindows.find((window) => window.id === "seven_day") ??
+              sortedWindows.find((window) => window.kind === "weekly"),
             ...sortedWindows,
           ]),
         ]

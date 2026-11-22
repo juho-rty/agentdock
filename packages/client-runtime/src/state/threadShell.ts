@@ -58,10 +58,9 @@ const isChildRunLive = (
       thread.status === "waiting";
 
 /**
- * Whether a thread shows under its parent rather than in thread lists: a
- * subagent, a side chat, or a task a linked environment delegated here whose parent the
- * client lists (`delegatedUnderParent`, by thread key). A task whose parent
- * the client cannot list stays in the lists, so its work is never out of reach.
+ * Whether a thread shows under its parent rather than in thread lists: a subagent, a side chat, or
+ * a remote delegated task (`delegatedUnderParent`). Without a listed parent, a delegated task stays
+ * hidden unless it currently needs user attention.
  */
 export function isShownUnderParent(
   ref: ScopedThreadRef,
@@ -733,15 +732,20 @@ export function createEnvironmentThreadShellAtoms(input: {
     const environmentIds = new Set(enabledEnvironmentIds(get(input.catalogValueAtom)));
     const next = new Set<string>();
     for (const environmentId of environmentIds) {
+      const pendingSubagentRequests = get(pendingSubagentRequestsAtom(environmentId));
       for (const thread of get(environmentThreadsAtom(environmentId))) {
         const parent = thread.delegatedFrom;
-        if (
-          parent !== undefined &&
+        if (parent === undefined) continue;
+        const parentListed =
           environmentIds.has(parent.environmentId) &&
-          // An archived parent leaves navigation; its task there stays listed on its own.
           get(environmentThreadIndexAtom(parent.environmentId)).get(parent.threadId)?.archivedAt ===
-            null
-        ) {
+            null;
+        // Remote delegated tasks belong under their parent thread, just like subagents. When the
+        // parent is not listed on this client (for example on a worker machine whose UI only shows
+        // its own environment), keep the task hidden unless it currently needs user attention.
+        const needsLocalAttention =
+          subagentRequest(thread) !== null || pendingSubagentRequests.has(thread.id);
+        if (parentListed || !needsLocalAttention) {
           next.add(threadKey({ environmentId, threadId: thread.id }));
         }
       }

@@ -42,8 +42,9 @@ function writeCollapsed(collapsed: boolean) {
 const KIND_ORDER = ["session", "weekly", "monthly"] as const;
 
 /**
- * The tightest window of each kind (session, weekly, monthly), so the row shows both the
- * short-term and the long-term limit. Providers that report only other kinds show their tightest.
+ * One representative window of each kind (session, weekly, monthly), so the row shows both the
+ * short-term and the long-term limit. Prefers the overall weekly limit (`seven_day`) over
+ * model-scoped weekly limits (e.g. `seven_day_fable`), falling back to the tightest window.
  */
 export function rowWindows(
   windows: ReadonlyArray<ServerProviderUsageWindow>,
@@ -56,7 +57,10 @@ export function rowWindows(
     return found;
   };
   const byKind = KIND_ORDER.flatMap((kind) => {
-    const found = tightest(windows.filter((window) => window.kind === kind));
+    const candidates = windows.filter((window) => window.kind === kind);
+    const found =
+      (kind === "weekly" ? candidates.find((window) => window.id === "seven_day") : undefined) ??
+      tightest(candidates);
     return found ? [found] : [];
   });
   if (byKind.length > 0) return byKind;

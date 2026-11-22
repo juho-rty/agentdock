@@ -34,6 +34,7 @@ function isAdHocSignedBundle(bundlePath: string): boolean {
  */
 export const MAC_SWAP_SCRIPT = `#!/bin/bash
 set -u
+unset ELECTRON_RUN_AS_NODE CHROME_CRASHPAD_PIPE_NAME
 pid="$1"; zip="$2"; app="$3"
 open() { "\${AGENTDOCK_SWAP_OPEN:-/usr/bin/open}" "$@"; }
 for _ in $(seq 1 600); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done

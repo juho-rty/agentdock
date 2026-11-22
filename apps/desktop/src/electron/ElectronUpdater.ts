@@ -46,6 +46,14 @@ const trackDownloadedUpdateFile = () => {
   });
 };
 
+const resolveDownloadedUpdateFile = (): string | null => {
+  if (downloadedUpdateFile !== null) return downloadedUpdateFile;
+  const helperFile = (
+    autoUpdater as unknown as { downloadedUpdateHelper?: { file?: unknown } | null }
+  ).downloadedUpdateHelper?.file;
+  return typeof helperFile === "string" && helperFile.length > 0 ? helperFile : null;
+};
+
 export type ElectronUpdaterFeedUrl = Parameters<AutoUpdater["setFeedURL"]>[0];
 
 export class ElectronUpdaterCheckForUpdatesError extends Schema.TaggedError<ElectronUpdaterCheckForUpdatesError>()(
@@ -173,6 +181,7 @@ export const make = ElectronUpdater.of({
     },
   ),
   checkForUpdates: Effect.suspend(() => {
+    trackDownloadedUpdateFile();
     const channel = autoUpdater.channel;
     return Effect.tryPromise({
       try: () => autoUpdater.checkForUpdates(),
@@ -180,9 +189,16 @@ export const make = ElectronUpdater.of({
     }).pipe(Effect.asVoid);
   }),
   downloadUpdate: Effect.suspend(() => {
+    trackDownloadedUpdateFile();
     const channel = autoUpdater.channel;
     return Effect.tryPromise({
-      try: () => autoUpdater.downloadUpdate(),
+      try: async () => {
+        const files = await autoUpdater.downloadUpdate();
+        const firstFile = Array.isArray(files) ? files[0] : undefined;
+        if (typeof firstFile === "string" && firstFile.length > 0) {
+          downloadedUpdateFile = firstFile;
+        }
+      },
       catch: (cause) => new ElectronUpdaterDownloadUpdateError({ channel, cause }),
     }).pipe(Effect.asVoid);
   }),
@@ -199,7 +215,7 @@ export const make = ElectronUpdater.of({
             platform,
             execPath: process.execPath,
             pid: process.pid,
-            downloadedFile: downloadedUpdateFile,
+            downloadedFile: resolveDownloadedUpdateFile(),
           });
           if (swapping) app.quit();
           else autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
@@ -215,6 +231,7 @@ export const make = ElectronUpdater.of({
     });
   }),
   on: Effect.fn("ElectronUpdater.on")(function (eventName, listener) {
+    trackDownloadedUpdateFile();
     const eventTarget = autoUpdater as unknown as {
       on: (eventName: string, listener: (...args: Array<unknown>) => void) => void;
       removeListener: (eventName: string, listener: (...args: Array<unknown>) => void) => void;

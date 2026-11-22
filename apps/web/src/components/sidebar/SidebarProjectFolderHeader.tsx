@@ -93,15 +93,24 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
           {group.displayName}
         </span>
         {dot ? (
-          <span className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[dot])}>
-            <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span>
-          </span>
+          <span
+            className={cn(
+              "size-1.5 shrink-0 rounded-full group-hover/project-folder:hidden group-has-[[data-sidebar-action-for]:focus]/project-folder:hidden pointer-coarse:hidden",
+              FOLDER_DOT_CLASS_NAME[dot],
+            )}
+          />
         ) : null}
+        {dot ? <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span> : null}
         {collapsed && hiddenThreads.length > 0 ? (
-          <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground group-hover/project-folder:invisible group-has-[[data-sidebar-action-for]:focus]/project-folder:invisible pointer-coarse:invisible">
+          <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground group-hover/project-folder:hidden group-has-[[data-sidebar-action-for]:focus]/project-folder:hidden pointer-coarse:hidden">
             {hiddenThreads.length}
           </span>
         ) : null}
+        {/* Reserves room for the overlaid New thread button so long folder names truncate cleanly. */}
+        <span
+          aria-hidden
+          className="hidden h-4 w-5 shrink-0 group-hover/project-folder:block group-has-[[data-sidebar-action-for]:focus]/project-folder:block pointer-coarse:block sm:w-4"
+        />
         <ChevronDownIcon
           aria-hidden
           className={cn(
