@@ -125,12 +125,27 @@ vi.mock(import("../hooks/useTheme"), async (original) => {
   };
 });
 
-const settingsOverrides = vi.hoisted(() => ({ mathRenderingEnabled: false }));
+const settingsOverrides = vi.hoisted(() => ({
+  mathRenderingEnabled: false,
+  listeners: new Set<() => void>(),
+  setMathRenderingEnabled(value: boolean) {
+    this.mathRenderingEnabled = value;
+    for (const listener of this.listeners) listener();
+  },
+}));
 vi.mock(import("../hooks/useSettings"), async (original) => {
   const actual = await original();
+  const { useSyncExternalStore } = await import("react");
   type Settings = ReturnType<typeof actual.getClientSettings>;
   function useClientSettings<T = Settings>(select?: (settings: Settings) => T): T {
-    const settings = { ...actual.getClientSettings(), ...settingsOverrides };
+    const mathEnabled = useSyncExternalStore(
+      (listener) => {
+        settingsOverrides.listeners.add(listener);
+        return () => settingsOverrides.listeners.delete(listener);
+      },
+      () => settingsOverrides.mathRenderingEnabled,
+    );
+    const settings = { ...actual.getClientSettings(), mathRenderingEnabled: mathEnabled };
     return select ? select(settings) : (settings as T);
   }
   return { ...actual, useClientSettings };
@@ -877,6 +892,42 @@ describe("ChatMarkdown Windows file links", () => {
       expect(container.innerHTML).not.toContain("d:alert");
       expect(fileHrefs(container)).toEqual([]);
     }
+  });
+});
+
+describe("ChatMarkdown math rendering", () => {
+  it("renders inline LaTeX inside bold Korean parenthesized text and updates when mathRenderingEnabled turns on", async () => {
+    setup();
+    const source = [
+      '* 소프트웨어에서 두 장비를 동시에 제어해 **"파워서플라이가 Gate 전압($V_{GS}$)을 0V, 1V, 2V... 바꿀 때마다 $\\rightarrow$ 2450이 자동으로 Drain 전압($V_{DS}$)을 0~5V 스윕해서 전류($I_D$)를 읽어와라"**',
+      '* *"자동으로 $I\\text{-}V$ 곡선과 저항을 5번씩 찍고"*',
+      "* 단순히 숫자만 엑셀로 저장하는 게 아니라, 측정이 끝나는 즉시 프로그램이 알아서 **저항, 이동도(Mobility), 문턱전압($V_{th}$), On/Off 비, 센서 감도($\\Delta R/R_0$), TCR** 등을 자동 계산해서 화면에 띄워주고 그래프 이미지까지 저장하게 만들 수 있습니다.",
+      "1. **계측기 $\\leftrightarrow$ 프로브 스테이션 바늘 연결 선**",
+    ].join("\n\n");
+
+    await using screen = await renderText(source);
+    expect(screen.container.querySelectorAll('[data-markdown-math="inline"]').length).toBe(0);
+    expect(screen.container.textContent).toContain("$V_{th}$");
+
+    await act(() => {
+      settingsOverrides.setMathRenderingEnabled(true);
+    });
+
+    await vi.waitFor(() => {
+      const formulas = screen.container.querySelectorAll('[data-markdown-math="inline"]');
+      expect(formulas.length).toBe(8);
+      const rendered = screen.container.querySelectorAll(".katex .katex-html");
+      expect(rendered.length).toBe(8);
+      for (const el of rendered) {
+        expect(el.getBoundingClientRect().width).toBeGreaterThan(0);
+      }
+    });
+    expect(screen.container.innerText).not.toContain("$V_{th}$");
+    expect(screen.container.innerText).not.toContain("$\\Delta R/R_0$");
+    expect(screen.container.innerText).not.toContain("\\rightarrow");
+    expect(screen.container.innerText).not.toContain("\\leftrightarrow");
+    expect(screen.container.innerText).toContain("→");
+    expect(screen.container.innerText).toContain("↔");
   });
 });
 
