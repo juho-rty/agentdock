@@ -23,6 +23,7 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import {
   createInboxReturnTracker,
   isThreadWorking,
+  prioritizeAttentionThreads,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "@t3tools/client-runtime/state/thread-inbox";
@@ -863,7 +864,10 @@ export function buildThreadListV2Items(input: {
 
   const orderedActive = workingShelfEnabled
     ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
-    : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
+    : prioritizeAttentionThreads(
+        applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending),
+        { stickyPriorityKey: input.selectedThreadKey ?? null },
+      );
   const orderedWorking = sortWorkingThreadsBySend(working);
   const orderedSnoozed = [...snoozed].sort(
     (left, right) =>

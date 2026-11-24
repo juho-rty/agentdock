@@ -397,3 +397,86 @@ describe("sidebar settled pagination", () => {
     expect(screen.container.querySelectorAll("[data-thread-item]")).toHaveLength(loadedRows);
   });
 });
+
+describe("sidebar priority surfacing", () => {
+  it("surfaces working and unread done threads above project folders in folder mode", async () => {
+    using stack = new DisposableStack();
+    const previousSettings = getClientSettings();
+    stack.defer(() => __setClientSettingsForTests(previousSettings));
+    __setClientSettingsForTests({
+      ...DEFAULT_CLIENT_SETTINGS,
+      boringSidebarEnabled: true,
+    });
+
+    const alpha = project("alpha");
+    const beta = project("beta");
+    const readAlpha = makeThreadFixture({
+      environmentId: alpha.environmentId,
+      projectId: alpha.id,
+      id: ThreadId.make("read-alpha"),
+      title: "Already read in alpha",
+      createdAt: "2026-06-01T05:00:00.000Z",
+      lastVisitedAt: "2026-06-01T05:10:00.000Z",
+    });
+    const unreadBeta = makeThreadFixture({
+      environmentId: beta.environmentId,
+      projectId: beta.id,
+      id: ThreadId.make("unread-beta"),
+      title: "Unread done in beta",
+      createdAt: "2026-06-01T01:00:00.000Z",
+      lastVisitedAt: "2026-06-01T01:00:00.000Z",
+      latestRun: {
+        runId: "run-unread-beta" as never,
+        status: "completed",
+        requestedAt: "2026-06-01T01:00:00.000Z",
+        startedAt: "2026-06-01T01:00:00.000Z",
+        completedAt: "2026-06-01T02:00:00.000Z",
+        assistantMessageId: null,
+      },
+    });
+    const workingBeta = makeThreadFixture({
+      environmentId: beta.environmentId,
+      projectId: beta.id,
+      id: ThreadId.make("working-beta"),
+      title: "Working now in beta",
+      createdAt: "2026-06-01T00:30:00.000Z",
+      runtime: {
+        status: "running",
+        activeRunId: null,
+        providerInstanceId: "codex" as never,
+        providerName: "Codex",
+        lastError: null,
+        updatedAt: "2026-06-01T02:30:00.000Z",
+      },
+    });
+
+    vi.mocked(useNowMinute).mockReturnValue("2026-06-01T06:00");
+    vi.mocked(useProjects).mockReturnValue([alpha, beta]);
+    vi.mocked(useQuietThreadShells).mockReturnValue([readAlpha, unreadBeta, workingBeta]);
+    vi.mocked(useThreadRouteTarget).mockReturnValue(null);
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: { environmentId: alpha.environmentId, projectId: alpha.id },
+      defaultProjectFallbackReady: true,
+      handleNewThread: vi.fn().mockResolvedValue(null),
+      routeDraftId: null,
+      routeThreadRef: null,
+    });
+
+    await using screen = await render(
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>,
+    );
+
+    await expect.element(screen.getByText("Working now in beta")).toBeInTheDocument();
+    await expect.element(screen.getByText("Unread done in beta")).toBeInTheDocument();
+    await expect.element(screen.getByText("Already read in alpha")).toBeInTheDocument();
+
+    const orderedKeys = [
+      ...screen.container.querySelectorAll<HTMLElement>("li[data-thread-item]"),
+    ].map((el) => el.dataset.threadItem);
+    expect(orderedKeys).toEqual(["local:working-beta", "local:unread-beta", "local:read-alpha"]);
+  });
+});

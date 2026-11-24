@@ -1,7 +1,7 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
 import { toSortableTimestamp } from "./threadSort.ts";
-import { effectiveSnoozed } from "./threadSettled.ts";
+import { effectiveSnoozed, hasUnseenRunFailure } from "./threadSettled.ts";
 
 type WorkingThreadInput = Pick<
   EnvironmentThreadShell,
@@ -93,6 +93,133 @@ export function sortWorkingThreadsBySend<T extends WorkingSortInput>(threads: re
     ]),
   );
   return sortNewestFirst(threads, timestamps);
+}
+
+export type ThreadAttentionPriorityInput = Pick<
+  EnvironmentThreadShell,
+  | "id"
+  | "environmentId"
+  | "createdAt"
+  | "hasActionableProposedPlan"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "interactionMode"
+  | "latestRun"
+  | "runtime"
+> & {
+  readonly pendingSubagentRequest?: EnvironmentThreadShell["pendingSubagentRequest"];
+  readonly pendingGuestMessageCount?: number | undefined;
+  readonly lastVisitedAt?: string | null | undefined;
+  readonly unsettledAt?: string | null | undefined;
+  readonly latestUserAuthoredMessageAt?: string | null | undefined;
+};
+
+function hasUnreadDoneRun(thread: ThreadAttentionPriorityInput): boolean {
+  const completedAt = thread.latestRun?.completedAt;
+  if (!completedAt) return false;
+  const status = thread.latestRun?.status;
+  if (status === "interrupted" || status === "cancelled" || status === "failed") return false;
+  const completedAtMs = toSortableTimestamp(completedAt);
+  if (completedAtMs === null) return false;
+  if (!thread.lastVisitedAt) return false;
+  const lastVisitedAtMs = toSortableTimestamp(thread.lastVisitedAt);
+  if (lastVisitedAtMs === null) return true;
+  return completedAtMs > lastVisitedAtMs;
+}
+
+/** Ranks attention (`3`), working (`2`), and unread done (`1`) threads above idle/read (`0`). */
+export function resolveThreadAttentionPriority(
+  thread: ThreadAttentionPriorityInput,
+): 0 | 1 | 2 | 3 {
+  if (
+    thread.hasPendingApprovals ||
+    thread.hasPendingUserInput ||
+    thread.pendingSubagentRequest != null ||
+    (thread.pendingGuestMessageCount ?? 0) > 0
+  ) {
+    return 3;
+  }
+  if (
+    hasUnseenRunFailure(thread) ||
+    (thread.runtime?.status === "failed" && thread.latestRun === null)
+  ) {
+    return 3;
+  }
+  const run = thread.latestRun;
+  const runSettled =
+    run !== null &&
+    run.status !== "preparing" &&
+    run.status !== "queued" &&
+    run.status !== "starting" &&
+    run.status !== "running" &&
+    run.status !== "waiting" &&
+    thread.runtime?.activeRunId !== run.runId;
+  if (thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled) {
+    return 3;
+  }
+  if (
+    thread.runtime !== null &&
+    ["preparing", "queued", "starting", "running", "waiting"].includes(thread.runtime.status)
+  ) {
+    return 2;
+  }
+  if (hasUnreadDoneRun(thread)) {
+    return 1;
+  }
+  return 0;
+}
+
+function attentionSortTimestampMs(thread: ThreadAttentionPriorityInput): number {
+  return Math.max(
+    toSortableTimestamp(thread.createdAt) ?? 0,
+    toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestUserAuthoredMessageAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestRun?.startedAt ?? undefined) ?? 0,
+    toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ?? 0,
+  );
+}
+
+/** Places priority threads at the top; `stickyPriorityKey` holds a just-opened unread row until navigation. */
+export function prioritizeAttentionThreads<T extends ThreadAttentionPriorityInput>(
+  threads: readonly T[],
+  options?: {
+    readonly resolvePriority?: (thread: T) => 0 | 1 | 2 | 3;
+    readonly stickyPriorityKey?: string | null;
+  },
+): T[] {
+  if (threads.length < 2) return [...threads];
+  const resolvePriority = options?.resolvePriority ?? resolveThreadAttentionPriority;
+  const stickyKey = options?.stickyPriorityKey ?? null;
+  const prioritized: Array<{
+    readonly thread: T;
+    readonly priority: 1 | 2 | 3;
+    readonly at: number;
+  }> = [];
+  const rest: T[] = [];
+  for (const thread of threads) {
+    const rawPriority = resolvePriority(thread);
+    const priority =
+      rawPriority > 0
+        ? rawPriority
+        : stickyKey !== null && `${thread.environmentId}:${thread.id}` === stickyKey
+          ? 1
+          : 0;
+    if (priority !== 0) {
+      prioritized.push({ thread, priority, at: attentionSortTimestampMs(thread) });
+    } else {
+      rest.push(thread);
+    }
+  }
+  if (prioritized.length === 0) return [...threads];
+  prioritized.sort(
+    (left, right) =>
+      right.priority - left.priority ||
+      right.at - left.at ||
+      left.thread.id.localeCompare(right.thread.id) ||
+      left.thread.environmentId.localeCompare(right.thread.environmentId),
+  );
+  return [...prioritized.map((entry) => entry.thread), ...rest];
 }
 
 function sortNewestFirst<T extends Pick<EnvironmentThreadShell, "id" | "environmentId">>(

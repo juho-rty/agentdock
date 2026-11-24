@@ -1153,6 +1153,9 @@ export interface DesktopBridge {
   quickAskQuit?: () => Promise<void>;
   getTrayEnabled?: () => Promise<boolean>;
   setTrayEnabled?: (enabled: boolean) => Promise<void>;
+  /** Whether AgentDock starts automatically in the background at OS login; null when unsupported. */
+  getLaunchAtLogin?: () => Promise<boolean | null>;
+  setLaunchAtLogin?: (enabled: boolean) => Promise<boolean>;
   /** Maps a Windows path to the one a local backend (`primary` or `wsl:…`) sees; null when it cannot. */
   toLocalBackendPath: (backendId: string, windowsPath: string) => Promise<string | null>;
   pickProjectFavicon: (initialPath?: string) => Promise<string | null>;

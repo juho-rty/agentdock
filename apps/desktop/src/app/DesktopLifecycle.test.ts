@@ -15,6 +15,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
+import * as DesktopQuickAsk from "../quickAsk/DesktopQuickAsk.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -358,6 +359,96 @@ describe("DesktopLifecycle", () => {
           appListeners.get("activate")?.();
 
           assert.equal(activationCount, 0);
+        }),
+      ).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("keeps running in the background on win32 when the system tray icon is active", () =>
+    Effect.gen(function* () {
+      const appListeners = new Map<string, (...args: readonly unknown[]) => void>();
+      let quitCalls = 0;
+      let backgroundNotices = 0;
+      const layerEnvironment = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+        platform: "win32",
+        isDevelopment: false,
+        appImagePath: Option.none(),
+      } as DesktopEnvironment.DesktopEnvironment["Service"]);
+      const layerQuickAsk = Layer.succeed(DesktopQuickAsk.DesktopQuickAsk, {
+        hasTray: Effect.succeed(true),
+        notifyRunningInBackground: Effect.sync(() => {
+          backgroundNotices += 1;
+        }),
+      } as DesktopQuickAsk.DesktopQuickAsk["Service"]);
+      const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(
+          layerElectronApp(
+            appListeners,
+            Effect.sync(() => {
+              quitCalls += 1;
+            }),
+          ),
+        ),
+        Layer.provideMerge(layerElectronTheme),
+        Layer.provideMerge(layerElectronWindow()),
+        Layer.provideMerge(layerDesktopWindow()),
+        Layer.provideMerge(layerEnvironment),
+        Layer.provideMerge(layerQuickAsk),
+        Layer.provideMerge(DesktopShutdown.layer),
+        Layer.provideMerge(DesktopState.layer),
+      );
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
+          yield* lifecycle.register;
+
+          appListeners.get("window-all-closed")?.();
+          yield* Effect.yieldNow;
+
+          assert.equal(quitCalls, 0);
+          assert.equal(backgroundNotices, 1);
+        }),
+      ).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("quits on win32 when all windows close and no tray icon is active", () =>
+    Effect.gen(function* () {
+      const appListeners = new Map<string, (...args: readonly unknown[]) => void>();
+      const quitRequested = yield* Deferred.make<void>();
+      const layerEnvironment = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+        platform: "win32",
+        isDevelopment: false,
+        appImagePath: Option.none(),
+      } as DesktopEnvironment.DesktopEnvironment["Service"]);
+      const layerQuickAsk = Layer.succeed(DesktopQuickAsk.DesktopQuickAsk, {
+        hasTray: Effect.succeed(false),
+        notifyRunningInBackground: Effect.void,
+      } as DesktopQuickAsk.DesktopQuickAsk["Service"]);
+      const layer = DesktopLifecycle.layer.pipe(
+        Layer.provideMerge(
+          layerElectronApp(
+            appListeners,
+            Deferred.succeed(quitRequested, undefined).pipe(Effect.asVoid),
+          ),
+        ),
+        Layer.provideMerge(layerElectronTheme),
+        Layer.provideMerge(layerElectronWindow()),
+        Layer.provideMerge(layerDesktopWindow()),
+        Layer.provideMerge(layerEnvironment),
+        Layer.provideMerge(layerQuickAsk),
+        Layer.provideMerge(DesktopShutdown.layer),
+        Layer.provideMerge(DesktopState.layer),
+      );
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
+          yield* lifecycle.register;
+
+          appListeners.get("window-all-closed")?.();
+          yield* Deferred.await(quitRequested);
         }),
       ).pipe(Effect.provide(layer));
     }),

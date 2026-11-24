@@ -4,6 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
@@ -25,6 +27,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import {
+  findUnpromotedWindowsTrayRegistryKeys,
   QUICK_ASK_INITIAL_HEIGHT,
   QUICK_ASK_WIDTH,
   type QuickAskRect,
@@ -44,6 +47,8 @@ export class DesktopQuickAsk extends Context.Service<
   {
     /** Creates the tray icon when the setting allows it; call once the app is ready. */
     readonly configure: Effect.Effect<void>;
+    readonly hasTray: Effect.Effect<boolean>;
+    readonly notifyRunningInBackground: Effect.Effect<void>;
     readonly setTrayEnabled: (enabled: boolean) => Effect.Effect<void>;
     readonly toggle: Effect.Effect<void>;
     readonly hide: Effect.Effect<void>;
@@ -81,6 +86,7 @@ const make = Effect.gen(function* () {
 
   const applicationUrl = getDesktopUrl(environment.isDevelopment);
   const isMac = environment.platform === "darwin";
+  const spawnerOption = yield* Effect.serviceOption(ChildProcessSpawner.ChildProcessSpawner);
   const state: {
     tray: Electron.Tray | null;
     popover: Electron.BrowserWindow | null;
@@ -89,6 +95,7 @@ const make = Effect.gen(function* () {
     height: number;
     hiddenByBlurAt: number;
     watchedMains: WeakSet<Electron.BrowserWindow>;
+    backgroundNoticeShown: boolean;
   } = {
     tray: null,
     popover: null,
@@ -97,6 +104,7 @@ const make = Effect.gen(function* () {
     height: QUICK_ASK_INITIAL_HEIGHT,
     hiddenByBlurAt: 0,
     watchedMains: new WeakSet(),
+    backgroundNoticeShown: false,
   };
   const pendingNavigation = yield* Ref.make<string | null>(null);
 
@@ -291,12 +299,7 @@ const make = Effect.gen(function* () {
 
   const trayMenu = () =>
     Electron.Menu.buildFromTemplate([
-      ...(environment.platform === "linux"
-        ? [
-            { label: m(msg("Quick Ask")), click: () => void runPromise(show) },
-            { type: "separator" as const },
-          ]
-        : []),
+      { label: m(msg("Quick Ask")), click: () => void runPromise(show) },
       {
         label: m(msg("Open {appName}"), { appName: environment.displayName }),
         click: () => void runPromise(openMain(null)),
@@ -307,6 +310,31 @@ const make = Effect.gen(function* () {
         click: () => void runPromise(electronApp.quit),
       },
     ]);
+
+  const promoteWindowsTrayIcon = Effect.gen(function* () {
+    if (environment.platform !== "win32" || Option.isNone(spawnerOption)) return;
+    const spawner = spawnerOption.value;
+    // Give Explorer a moment to materialize the NotifyIconSettings subkey on first registration.
+    yield* Effect.sleep("600 millis");
+    const output = yield* spawner.string(
+      ChildProcess.make("reg.exe", ["query", "HKCU\\Control Panel\\NotifyIconSettings", "/s"], {
+        stdin: "ignore",
+        stderr: "ignore",
+      }),
+    );
+    const unpromotedKeys = findUnpromotedWindowsTrayRegistryKeys(output, process.execPath);
+    for (const key of unpromotedKeys) {
+      yield* spawner
+        .exitCode(
+          ChildProcess.make(
+            "reg.exe",
+            ["add", key, "/v", "IsPromoted", "/t", "REG_DWORD", "/d", "1", "/f"],
+            { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
+          ),
+        )
+        .pipe(Effect.ignore);
+    }
+  }).pipe(Effect.timeout("5 seconds"), Effect.ignore);
 
   const createTray = Effect.gen(function* () {
     if (state.tray !== null && !state.tray.isDestroyed()) return;
@@ -335,6 +363,9 @@ const make = Effect.gen(function* () {
       });
     }
     state.tray = tray;
+    if (environment.platform === "win32") {
+      runFork(promoteWindowsTrayIcon);
+    }
     yield* logInfo("tray icon created");
   });
 
@@ -362,6 +393,28 @@ const make = Effect.gen(function* () {
       ),
       Effect.withSpan("desktop.quickAsk.configure"),
     ),
+    hasTray: Effect.sync(() => state.tray !== null && !state.tray.isDestroyed()),
+    notifyRunningInBackground: Effect.sync(() => {
+      if (environment.platform !== "win32" || state.backgroundNoticeShown) return;
+      const tray = state.tray;
+      if (tray === null || tray.isDestroyed()) return;
+      state.backgroundNoticeShown = true;
+      try {
+        tray.displayBalloon({
+          iconType: "info",
+          title: environment.displayName,
+          content: m(
+            msg(
+              "{appName} is still running in the background. Click the tray icon for Quick Ask or right-click to quit.",
+            ),
+            { appName: environment.displayName },
+          ),
+          respectQuietTime: true,
+        });
+      } catch {
+        // Balloon notifications are best-effort on Windows shells that disable them.
+      }
+    }),
     setTrayEnabled: Effect.fn("DesktopQuickAsk.setTrayEnabled")(function* (enabled) {
       yield* setTrayEnabled(enabled).pipe(
         Effect.catchCause((cause) =>

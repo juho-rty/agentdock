@@ -1023,6 +1023,9 @@ export const make = Effect.gen(function* () {
   });
 
   const createMain = Effect.gen(function* () {
+    if (desktopState.launchHiddenInTray) {
+      yield* Ref.set(desktopState.launchHiddenInTray, false);
+    }
     const window = yield* createWindow();
     if (Option.isSome(window)) {
       mainClosedDuringStartup = false;
@@ -1152,6 +1155,9 @@ export const make = Effect.gen(function* () {
     }),
     activate: Effect.gen(function* () {
       if (yield* Ref.get(desktopState.quitting)) return;
+      if (desktopState.launchHiddenInTray) {
+        yield* Ref.set(desktopState.launchHiddenInTray, false);
+      }
       const existingWindow = yield* currentMainWindow;
       if (Option.isSome(existingWindow)) {
         yield* revealMain(existingWindow.value);
@@ -1177,7 +1183,10 @@ export const make = Effect.gen(function* () {
       backendHasStarted = true;
       yield* Ref.set(backendReadyRef, true);
       yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });
-      if (!mainClosedDuringStartup) yield* createMainIfBackendReady;
+      const launchHidden = desktopState.launchHiddenInTray
+        ? yield* Ref.get(desktopState.launchHiddenInTray)
+        : false;
+      if (!mainClosedDuringStartup && !launchHidden) yield* createMainIfBackendReady;
     }),
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),

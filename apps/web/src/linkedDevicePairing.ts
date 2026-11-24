@@ -1,8 +1,4 @@
-/**
- * A phone paired with one machine gets the machines linked to it on its own: the primary
- * environment asks each link for a one-time pairing code, and the phone redeems it at that
- * machine's phone relay. Each environment is added once, so removing one sticks.
- */
+/** Pairs this client once per full-access linked environment of its primary server. */
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -18,6 +14,8 @@ import { readPrimaryEnvironmentId } from "./state/environments";
 const ADDED_STORAGE_KEY = "agentdock:auto-linked-environments";
 const READY_POLL_MS = 2_000;
 const READY_ATTEMPTS = 30;
+const RESYNC_MIN_INTERVAL_MS = 60_000;
+const BACKGROUND_RESYNC_MS = 120_000;
 
 function readAdded(): ReadonlyArray<string> {
   try {
@@ -46,6 +44,19 @@ function readKnownEnvironmentIds(): ReadonlyArray<EnvironmentId> | null {
   return [...new Set([primary, ...catalog.entries.keys()])];
 }
 
+let syncInFlight: Promise<void> | null = null;
+let lastSyncAtMs = 0;
+
+function candidateHostsForPairing(pairing: {
+  readonly relayUrl: string;
+  readonly directUrl?: string | undefined;
+}): ReadonlyArray<string> {
+  const raw = isElectron
+    ? [pairing.directUrl, pairing.relayUrl]
+    : [pairing.relayUrl, pairing.directUrl];
+  return [...new Set(raw.map((url) => url?.trim() ?? "").filter((url) => url.length > 0))];
+}
+
 async function pairLinkedEnvironments(known: ReadonlyArray<EnvironmentId>): Promise<void> {
   const added = readAdded();
   const { pairings } = await runPrimaryHttp(
@@ -64,23 +75,41 @@ async function pairLinkedEnvironments(known: ReadonlyArray<EnvironmentId>): Prom
     ),
   );
   for (const pairing of pairings) {
-    const result = await runAtomCommand(
-      appAtomRegistry,
-      connectPairing,
-      {
-        host: pairing.relayUrl,
-        pairingCode: pairing.credential,
-        expectedEnvironmentId: pairing.environmentId,
-      },
-      { reportFailure: false },
-    );
-    if (result._tag === "Success") rememberAdded(pairing.environmentId);
+    for (const host of candidateHostsForPairing(pairing)) {
+      const result = await runAtomCommand(
+        appAtomRegistry,
+        connectPairing,
+        {
+          host,
+          pairingCode: pairing.credential,
+          expectedEnvironmentId: pairing.environmentId,
+        },
+        { reportFailure: false },
+      );
+      if (result._tag === "Success") {
+        rememberAdded(pairing.environmentId);
+        break;
+      }
+    }
   }
 }
 
+function triggerLinkedDeviceSync(force = false): void {
+  if (syncInFlight !== null) return;
+  const now = Date.now();
+  if (!force && now - lastSyncAtMs < RESYNC_MIN_INTERVAL_MS) return;
+  const known = readKnownEnvironmentIds();
+  if (known === null) return;
+  lastSyncAtMs = now;
+  syncInFlight = pairLinkedEnvironments(known)
+    .catch(() => undefined)
+    .finally(() => {
+      syncInFlight = null;
+    });
+}
+
 export function startLinkedDevicePairing(): void {
-  // The desktop app keeps its own list; this is for a browser reaching one machine.
-  if (isElectron || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
   let attempts = 0;
   const timer = window.setInterval(() => {
     attempts += 1;
@@ -88,7 +117,10 @@ export function startLinkedDevicePairing(): void {
     if (known === null && attempts < READY_ATTEMPTS) return;
     window.clearInterval(timer);
     if (known === null) return;
-    // Signed out, offline, or an older server without the endpoint; the next start tries again.
-    void pairLinkedEnvironments(known).catch(() => undefined);
+    // Signed out, offline, or an older server without the endpoint; later focus/resync retries.
+    triggerLinkedDeviceSync(true);
   }, READY_POLL_MS);
+
+  window.addEventListener("focus", () => triggerLinkedDeviceSync(false));
+  window.setInterval(() => triggerLinkedDeviceSync(false), BACKGROUND_RESYNC_MS);
 }

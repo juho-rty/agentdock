@@ -311,7 +311,10 @@ const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: bool
   if (!settings.localEnvironmentEnabled) {
     // The backend config refreshes the launcher when the local environment runs; an update may move the app.
     yield* DesktopCliShim.install;
-    if (!(yield* Ref.get(state.quitting))) {
+    const launchHidden = state.launchHiddenInTray
+      ? yield* Ref.get(state.launchHiddenInTray)
+      : false;
+    if (!(yield* Ref.get(state.quitting)) && !launchHidden) {
       yield* desktopWindow.createMainIfBackendReady;
     }
     // `t3 <dir>` still reaches the renderer, which opens it on this machine's connected service.
@@ -321,8 +324,10 @@ const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: bool
 
   const primaryBackend = yield* (yield* DesktopBackendPool.DesktopBackendPool).primary;
   const config = yield* primaryBackend.currentConfig;
+  const launchHidden = state.launchHiddenInTray ? yield* Ref.get(state.launchHiddenInTray) : false;
   if (
     !environment.isDevelopment &&
+    !launchHidden &&
     Option.isSome(config) &&
     Option.isNone(config.value.preflightFailure)
   ) {
@@ -413,6 +418,17 @@ const startup = Effect.gen(function* () {
   yield* previewPasskeys.configure;
   yield* applicationMenu.configure;
   yield* quickAsk.configure;
+  const state = yield* DesktopState.DesktopState;
+  const launchArgs = yield* Effect.serviceOption(HostProcess.Arguments);
+  const requestedHiddenLaunch = Option.isSome(launchArgs) && launchArgs.value.includes("--hidden");
+  if (
+    requestedHiddenLaunch &&
+    state.launchHiddenInTray !== undefined &&
+    quickAsk.hasTray !== undefined &&
+    (yield* quickAsk.hasTray)
+  ) {
+    yield* Ref.set(state.launchHiddenInTray, true);
+  }
   // Portal identity is prepared pre-ready; MIME helpers must not gate the backend or window.
   yield* linuxUrlHandler.register.pipe(Effect.forkScoped);
   yield* bootstrap(backendStarted).pipe(

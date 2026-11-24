@@ -156,3 +156,5 @@ export const QUICK_ASK_OPEN_SETTINGS_CHANNEL = "desktop:quick-ask-open-settings"
 export const TAKE_PENDING_NAVIGATION_CHANNEL = "desktop:take-pending-navigation";
 export const GET_TRAY_ENABLED_CHANNEL = "desktop:get-tray-enabled";
 export const SET_TRAY_ENABLED_CHANNEL = "desktop:set-tray-enabled";
+export const GET_LAUNCH_AT_LOGIN_CHANNEL = "desktop:get-launch-at-login";
+export const SET_LAUNCH_AT_LOGIN_CHANNEL = "desktop:set-launch-at-login";

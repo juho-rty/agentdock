@@ -25,7 +25,7 @@ const MARK_SHAPES = (fill: string) => `
 const templateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${MARK_SHAPES("#000000")}</svg>`;
 
 const tileSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <rect width="24" height="24" rx="5" fill="#18181b" />
+  <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="5" fill="#18181b" stroke="#ffffff" stroke-opacity="0.24" stroke-width="1.25" />
   <g transform="translate(3 3) scale(0.75)">${MARK_SHAPES("#fafafa")}</g>
 </svg>`;
 

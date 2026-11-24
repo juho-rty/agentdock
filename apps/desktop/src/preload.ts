@@ -261,6 +261,9 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   quickAskQuit: () => ipcRenderer.invoke(IpcChannels.QUICK_ASK_QUIT_CHANNEL),
   getTrayEnabled: () => ipcRenderer.invoke(IpcChannels.GET_TRAY_ENABLED_CHANNEL),
   setTrayEnabled: (enabled) => ipcRenderer.invoke(IpcChannels.SET_TRAY_ENABLED_CHANNEL, enabled),
+  getLaunchAtLogin: () => ipcRenderer.invoke(IpcChannels.GET_LAUNCH_AT_LOGIN_CHANNEL),
+  setLaunchAtLogin: (enabled) =>
+    ipcRenderer.invoke(IpcChannels.SET_LAUNCH_AT_LOGIN_CHANNEL, enabled),
   toLocalBackendPath: (backendId, path) =>
     ipcRenderer.invoke(IpcChannels.TO_LOCAL_BACKEND_PATH_CHANNEL, { backendId, path }),
   pickProjectFavicon: (initialPath) =>

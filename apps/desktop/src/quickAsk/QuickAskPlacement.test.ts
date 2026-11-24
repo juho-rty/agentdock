@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   clampQuickAskHeight,
+  findUnpromotedWindowsTrayRegistryKeys,
   hasTrayBounds,
   resolveQuickAskPosition,
 } from "./QuickAskPlacement.ts";
@@ -102,5 +103,30 @@ describe("clampQuickAskHeight", () => {
     expect(clampQuickAskHeight(300.4, windowsArea)).toBe(300);
     expect(clampQuickAskHeight(5000, windowsArea)).toBe(1024);
     expect(clampQuickAskHeight(Number.NaN, windowsArea)).toBe(1);
+  });
+});
+
+describe("findUnpromotedWindowsTrayRegistryKeys", () => {
+  it("matches full paths and KnownFolder GUID paths without touching user-configured keys", () => {
+    const regOutput = [
+      "HKEY_CURRENT_USER\\Control Panel\\NotifyIconSettings\\97695540589408293",
+      "    ExecutablePath    REG_SZ    {F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\\Programs\\agentdock\\AgentDock.exe",
+      "    IconSnapshot    REG_BINARY    89504E47",
+      "",
+      "HKEY_CURRENT_USER\\Control Panel\\NotifyIconSettings\\11111111111111111",
+      "    ExecutablePath    REG_SZ    C:\\Users\\chosp\\AppData\\Local\\Programs\\agentdock\\AgentDock.exe",
+      "    IsPromoted    REG_DWORD    0x0",
+      "",
+      "HKEY_CURRENT_USER\\Control Panel\\NotifyIconSettings\\22222222222222222",
+      "    ExecutablePath    REG_SZ    C:\\Users\\chosp\\AppData\\Local\\AgentDock\\deps\\.agentdock-runtime-609a4f\\AgentDock.exe",
+      "",
+    ].join("\r\n");
+
+    expect(
+      findUnpromotedWindowsTrayRegistryKeys(
+        regOutput,
+        "C:\\Users\\chosp\\AppData\\Local\\Programs\\agentdock\\AgentDock.exe",
+      ),
+    ).toEqual(["HKEY_CURRENT_USER\\Control Panel\\NotifyIconSettings\\97695540589408293"]);
   });
 });

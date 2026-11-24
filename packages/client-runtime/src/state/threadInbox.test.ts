@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   createInboxReturnTracker,
   isThreadWorking,
+  prioritizeAttentionThreads,
+  resolveThreadAttentionPriority,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "./threadInbox.ts";
@@ -259,5 +261,73 @@ describe("sortWorkingThreadsBySend", () => {
     expect(
       sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((thread) => thread.id),
     ).toEqual(["sent-last", "sent-first", "launched"]);
+  });
+});
+
+describe("prioritizeAttentionThreads", () => {
+  it("surfaces approval/input, working, and unread done threads above already-read threads", () => {
+    const readIdle = {
+      ...thread("read-idle", false),
+      createdAt: "2026-06-01T05:00:00.000Z",
+      lastVisitedAt: "2026-06-01T05:05:00.000Z",
+      latestRun: {
+        runId: RunId.make("run:read"),
+        status: "completed" as const,
+        requestedAt: "2026-06-01T05:00:00.000Z",
+        startedAt: "2026-06-01T05:00:00.000Z",
+        completedAt: "2026-06-01T05:01:00.000Z",
+        assistantMessageId: null,
+      },
+    };
+    const unreadDone = {
+      ...thread("unread-done", false),
+      createdAt: "2026-06-01T01:00:00.000Z",
+      lastVisitedAt: "2026-06-01T01:00:00.000Z",
+      latestRun: {
+        runId: RunId.make("run:done"),
+        status: "completed" as const,
+        requestedAt: "2026-06-01T01:00:00.000Z",
+        startedAt: "2026-06-01T01:00:00.000Z",
+        completedAt: "2026-06-01T02:00:00.000Z",
+        assistantMessageId: null,
+      },
+    };
+    const workingNow = {
+      ...thread("working-now", true),
+      createdAt: "2026-06-01T00:30:00.000Z",
+    };
+    const needsApproval = {
+      ...thread("needs-approval", true),
+      createdAt: "2026-06-01T00:10:00.000Z",
+      hasPendingApprovals: true,
+    };
+
+    expect(resolveThreadAttentionPriority(readIdle)).toBe(0);
+    expect(resolveThreadAttentionPriority(unreadDone)).toBe(1);
+    expect(resolveThreadAttentionPriority(workingNow)).toBe(2);
+    expect(resolveThreadAttentionPriority(needsApproval)).toBe(3);
+
+    expect(
+      prioritizeAttentionThreads([readIdle, unreadDone, workingNow, needsApproval]).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["needs-approval", "working-now", "unread-done", "read-idle"]);
+  });
+
+  it("holds a sticky priority key at the top after its visit watermark advances", () => {
+    const stickyRead = {
+      ...thread("just-opened", false),
+      createdAt: "2026-06-01T01:00:00.000Z",
+      lastVisitedAt: "2026-06-01T03:00:00.000Z",
+    };
+    const newerIdle = {
+      ...thread("newer-idle", false),
+      createdAt: "2026-06-01T04:00:00.000Z",
+    };
+    expect(
+      prioritizeAttentionThreads([newerIdle, stickyRead], {
+        stickyPriorityKey: `${environmentId}:just-opened`,
+      }).map((entry) => entry.id),
+    ).toEqual(["just-opened", "newer-idle"]);
   });
 });

@@ -206,6 +206,7 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   planSidebarThreadDrop,
+  prioritizeAttentionThreads,
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveSidebarSweepKeys,
@@ -213,6 +214,7 @@ import {
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
   resolveSidebarReorderableThreadKeys,
+  resolveThreadAttentionPriority,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
@@ -376,6 +378,7 @@ interface SidebarThreadPartitionInput {
   readonly workingShelfEnabled: boolean;
   /** Boring mode: folders list active threads by the user's latest message. */
   readonly sortActiveBySend: boolean;
+  readonly stickyPriorityKey: string | null;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -496,6 +499,25 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
+  // Hold a just-opened unread/priority thread in the priority block until the user switches routes,
+  // so visiting a completed thread does not immediately jump its row away under the pointer.
+  const [stickyPriorityRoute, setStickyPriorityRoute] = useState<{
+    readonly routeKey: string | null;
+    readonly stickyKey: string | null;
+  }>({ routeKey: null, stickyKey: null });
+  let stickyPriorityKey = stickyPriorityRoute.stickyKey;
+  if (stickyPriorityRoute.routeKey !== routeRowThreadKey) {
+    const routeThread =
+      routeRowThreadKey === null
+        ? undefined
+        : threads.find((candidate) => threadShellKey(candidate) === routeRowThreadKey);
+    stickyPriorityKey =
+      routeThread !== undefined && resolveThreadAttentionPriority(routeThread) > 0
+        ? routeRowThreadKey
+        : null;
+    setStickyPriorityRoute({ routeKey: routeRowThreadKey, stickyKey: stickyPriorityKey });
+  }
+
   const partition = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
@@ -505,6 +527,7 @@ function useSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
+    stickyPriorityKey,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -542,10 +565,19 @@ function useSidebarThreads(input: {
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
+  const isPriorityThread = (thread: EnvironmentThreadShell) =>
+    resolveThreadAttentionPriority(thread) > 0 ||
+    (stickyPriorityKey !== null && threadShellKey(thread) === stickyPriorityKey);
+  const priorityActiveThreads =
+    folderGroups === null ? EMPTY_THREADS : activeThreads.filter(isPriorityThread);
+  const folderActiveThreads =
+    folderGroups === null
+      ? activeThreads
+      : activeThreads.filter((thread) => !isPriorityThread(thread));
   const projectFolders =
     folderGroups === null
       ? null
-      : groupSidebarThreadsByProject(folderGroups, activeThreads, keepEmpty).map((folder) => {
+      : groupSidebarThreadsByProject(folderGroups, folderActiveThreads, keepEmpty).map((folder) => {
           const collapsed = !resolveProjectExpanded(
             projectExpandedById,
             sidebarFolderExpansionKeys(folder.group),
@@ -566,7 +598,7 @@ function useSidebarThreads(input: {
     ...pinnedThreads,
     ...(projectFolders === null
       ? activeThreads
-      : projectFolders.flatMap((folder) => folder.threads)),
+      : [...priorityActiveThreads, ...projectFolders.flatMap((folder) => folder.threads)]),
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
@@ -607,6 +639,7 @@ function useSidebarThreads(input: {
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
+    priorityActiveThreads,
     projectFolders,
     toggleProjectFolder: (group: SidebarProjectSnapshot) => {
       const keys = sidebarFolderExpansionKeys(group);
@@ -640,6 +673,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend,
+    stickyPriorityKey,
   } = input;
   const preciseNow = new Date().toISOString();
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
@@ -697,11 +731,14 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   }
   // Availability gates dragging only; sorting must stay consistent across clients.
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = sortActiveBySend
-    ? sortWorkingThreadsBySend(active)
-    : workingShelfEnabled
-      ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-      : sortThreadsForSidebar(active);
+  const sortedActive = prioritizeAttentionThreads(
+    sortActiveBySend
+      ? sortWorkingThreadsBySend(active)
+      : workingShelfEnabled
+        ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
+        : sortThreadsForSidebar(active),
+    { stickyPriorityKey },
+  );
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
@@ -1370,6 +1407,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     toggleSnoozedShelf,
     workingShelfExpanded,
     toggleWorkingShelf,
+    priorityActiveThreads,
     projectFolders,
     toggleProjectFolder,
     renderedSettledThreads,
@@ -3604,6 +3642,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           continue;
                         }
                         if (projectFolders !== null && item.marker === "active-placeholder") {
+                          for (const thread of priorityActiveThreads) {
+                            items.push(renderThreadRow(thread, "active"));
+                          }
                           for (const folder of projectFolders) {
                             items.push(
                               <SidebarProjectFolderHeader

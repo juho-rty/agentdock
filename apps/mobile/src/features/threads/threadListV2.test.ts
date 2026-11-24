@@ -1756,6 +1756,7 @@ describe("Working section beta", () => {
     const off = build({ workingShelfEnabled: false });
     expect(ids(off)).toContain("working");
     expect(off.workingCount).toBe(0);
+    expect(ids(off).slice(0, 3)).toEqual(["pinned-working", "asks-approval", "working"]);
   });
 
   it("keeps an inactive row in Working during the shared grace and returns it on expiry", () => {

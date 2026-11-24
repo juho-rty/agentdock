@@ -159,6 +159,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(QuickAskIpc.takePendingNavigation);
   yield* ipc.handle(QuickAskIpc.getTrayEnabled);
   yield* ipc.handle(QuickAskIpc.setTrayEnabled);
+  yield* ipc.handle(QuickAskIpc.getLaunchAtLogin);
+  yield* ipc.handle(QuickAskIpc.setLaunchAtLogin);
 
   yield* ipc.handle(pickFolder);
   yield* ipc.handle(toLocalBackendPath);

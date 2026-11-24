@@ -919,6 +919,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     desktopOnly: true,
   },
   {
+    id: "launch-at-login",
+    title: msg("Start at login"),
+    to: "/settings/general",
+    searchTerms: [msg("startup login item boot auto start background hidden tray")],
+    desktopOnly: true,
+  },
+  {
     id: "quit-confirmation",
     title: msg("Quit shortcut"),
     to: "/settings/general",

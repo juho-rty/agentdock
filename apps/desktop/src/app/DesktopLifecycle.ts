@@ -15,6 +15,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import { stopChildProcessesBeforeExit, stopZygotesBeforeExit } from "./DesktopExitChildren.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
+import * as DesktopQuickAsk from "../quickAsk/DesktopQuickAsk.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
@@ -231,12 +232,14 @@ export const make = DesktopLifecycle.of({
         yield* electronApp.exit(75);
         return;
       }
-      // Startup already acted on the app link that launched it; passing it on replays it.
+      // Startup already acted on the app link or --hidden launch flag; passing them on replays them.
       const appLinkPrefix = `${ElectronProtocol.getDesktopScheme(environment.isDevelopment)}:`;
       const args = yield* HostProcess.Arguments;
       yield* electronApp.relaunch({
         execPath: yield* HostProcess.ExecutablePath,
-        args: args.slice(1).filter((arg) => !arg.toLowerCase().startsWith(appLinkPrefix)),
+        args: args
+          .slice(1)
+          .filter((arg) => arg !== "--hidden" && !arg.toLowerCase().startsWith(appLinkPrefix)),
       });
       yield* electronApp.exit(0);
     }).pipe(
@@ -298,9 +301,22 @@ export const make = DesktopLifecycle.of({
         Effect.gen(function* () {
           const app = yield* ElectronApp.ElectronApp;
           const state = yield* DesktopState.DesktopState;
-          if (environment.platform !== "darwin" && !(yield* Ref.get(state.quitting))) {
-            yield* app.quit;
+          if (environment.platform === "darwin" || (yield* Ref.get(state.quitting))) {
+            return;
           }
+          const quickAsk = yield* Effect.serviceOption(DesktopQuickAsk.DesktopQuickAsk);
+          if (
+            Option.isSome(quickAsk) &&
+            quickAsk.value.hasTray !== undefined &&
+            (yield* quickAsk.value.hasTray)
+          ) {
+            if (quickAsk.value.notifyRunningInBackground !== undefined) {
+              yield* quickAsk.value.notifyRunningInBackground;
+            }
+            yield* logLifecycleInfo("keeping desktop running in system tray after windows closed");
+            return;
+          }
+          yield* app.quit;
         }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
       );
     });

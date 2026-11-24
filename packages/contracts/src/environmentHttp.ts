@@ -1100,12 +1100,14 @@ class EnvironmentWebPushHttpApi extends HttpApiGroup.make("webPush")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
-/** A one-time pairing code for the phone, made by a linked environment for itself. */
+/** A one-time pairing code made by a linked environment for a client on a peer machine or phone. */
 export const LinkedDevicePairing = Schema.Struct({
   environmentId: EnvironmentId,
   label: Schema.String,
-  /** The linked environment's phone relay: the address a phone can reach it at. */
+  /** The linked environment's phone relay: the address a phone can reach it at (empty when off). */
   relayUrl: Schema.String,
+  /** Direct origin the primary environment reached this link at (for example Tailscale HTTPS). */
+  directUrl: Schema.optionalKey(Schema.String),
   credential: TrimmedNonEmptyString,
 });
 export type LinkedDevicePairing = typeof LinkedDevicePairing.Type;

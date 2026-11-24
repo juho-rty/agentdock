@@ -54,8 +54,10 @@ export const layer = HttpApiBuilder.group(
         Effect.flatMap(HttpClientResponse.schemaBodyJson(LinkedDevicePairing)),
         Effect.timeout(ISSUE_TIMEOUT),
       );
-      // A link that answers as another machine must not hand the phone that machine's code.
-      return response.environmentId === environmentId ? response : null;
+      // A link that answers as another machine must not hand the client that machine's code.
+      return response.environmentId === environmentId
+        ? { ...response, directUrl: resolved.url }
+        : null;
     });
 
     return handlers
@@ -73,17 +75,17 @@ export const layer = HttpApiBuilder.group(
           // A full-access link already runs agents here as this user, so a client session
           // gives it nothing new; a narrower link must not gain one.
           if (!session.peerLink || session.access !== "full-access") {
-            return yield* forbidden("Only a full-access linked environment may pair a phone here.");
+            return yield* forbidden(
+              "Only a full-access linked environment may pair a device here.",
+            );
           }
           const status = yield* phoneAccess.getStatus;
-          if (!status.enabled || status.state !== "connected") {
-            return yield* forbidden("Phone access is not running on this environment.");
-          }
+          const relayUrl = status.enabled && status.state === "connected" ? status.relayUrl : "";
           const descriptor = yield* environment.getDescriptor;
           const issued = yield* serverAuth
             .issuePairingCredential({
               scopes: AuthStandardClientScopes,
-              label: `Phone via ${session.label}`,
+              label: `Linked device via ${session.label}`,
             })
             .pipe(
               Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
@@ -96,7 +98,7 @@ export const layer = HttpApiBuilder.group(
           return {
             environmentId: descriptor.environmentId,
             label: descriptor.label,
-            relayUrl: status.relayUrl,
+            relayUrl,
             credential: issued.credential,
           };
         }),

@@ -57,3 +57,39 @@ export function resolveQuickAskPosition(input: {
   const trayAtTop = anchor.y < area.y + SCREEN_MARGIN && anchor.height > 0;
   return { x: Math.round(x), y: Math.round(trayAtTop ? minY : maxY) };
 }
+
+/** Finds `NotifyIconSettings` subkeys for `execPath` where `IsPromoted` has never been set. */
+export function findUnpromotedWindowsTrayRegistryKeys(
+  regQueryOutput: string,
+  execPath: string,
+): string[] {
+  const normalizedExec = execPath.replaceAll("/", "\\").trim().toLowerCase();
+  if (normalizedExec.length === 0) return [];
+  const segments = normalizedExec.split("\\").filter(Boolean);
+  const trailingTwo =
+    segments.length >= 2 ? `\\${segments.slice(-2).join("\\")}` : `\\${segments.at(-1) ?? ""}`;
+  const keys: string[] = [];
+  for (const block of regQueryOutput.split(/\r?\n\r?\n+/)) {
+    const lines = block
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const header = lines[0];
+    if (!header?.toUpperCase().startsWith("HKEY_CURRENT_USER\\CONTROL PANEL\\NOTIFYICONSETTINGS\\"))
+      continue;
+    const execLine = lines.find((line) => /^ExecutablePath\s+REG_SZ\s+/i.test(line));
+    if (!execLine) continue;
+    const recordedPath = execLine
+      .replace(/^ExecutablePath\s+REG_SZ\s+/i, "")
+      .replaceAll("/", "\\")
+      .trim()
+      .toLowerCase();
+    const matchesExec =
+      recordedPath === normalizedExec ||
+      (trailingTwo.length > 1 && recordedPath.endsWith(trailingTwo));
+    if (!matchesExec) continue;
+    const hasExplicitPromotion = lines.some((line) => /^IsPromoted\s+REG_DWORD\b/i.test(line));
+    if (!hasExplicitPromotion) keys.push(header);
+  }
+  return keys;
+}
