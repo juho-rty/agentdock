@@ -3490,7 +3490,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     // controls.
                     role="presentation"
                     className={cn(
-                      "relative flex flex-col gap-px",
+                      "relative flex flex-col gap-0.5",
                       sidebarListItems.length > 0 && "flex-1",
                       actionSweep !== null && "**:pointer-events-none",
                       // Projected rows (two boundary labels, two hints) extend the scroll range; a range that
