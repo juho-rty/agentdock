@@ -17,7 +17,8 @@ for dir in apps/*/ packages/*/; do
   ignore "${dir}dist-exe"
 done
 for dir in release release-mock native/resource-monitor/target apps/desktop/dist-electron \
-  apps/desktop/.electron-runtime .electron-runtime .vite-plus .turbo .bun; do
+  apps/desktop/.electron-runtime .electron-runtime .vite-plus .turbo .bun \
+  apps/mobile/ios apps/mobile/android apps/mobile/.generated; do
   ignore "$dir"
 done
 echo "Dropbox will skip node_modules and build output in $(pwd)"

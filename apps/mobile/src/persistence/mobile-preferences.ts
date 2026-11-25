@@ -68,6 +68,7 @@ const isIssueSavedView = Schema.is(IssueSavedView);
 const ThreadListFilters = Schema.Struct({
   environmentId: Schema.NullOr(EnvironmentId),
   projectKey: Schema.NullOr(Schema.String),
+  mode: Schema.optional(Schema.Literals(["agent", "chat"])),
 });
 export type ThreadListFilters = typeof ThreadListFilters.Type;
 
@@ -143,6 +144,8 @@ export interface Preferences {
   readonly pullRequestActivityVisibility?: PullRequestActivityVisibility;
   readonly pullRequestMergeMethod?: PullRequestMergeMethod;
   readonly liveActivitiesEnabled?: boolean;
+  /** Unset means on: finished runs, questions and approvals post a notification on this phone. */
+  readonly threadNotificationsEnabled?: boolean;
   readonly themeId?: MobileThemeId;
   readonly lightThemeId?: MobileThemeId;
   readonly darkThemeId?: MobileThemeId;
@@ -236,6 +239,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     pullRequestActivityVisibility?: PullRequestActivityVisibility;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
+    threadNotificationsEnabled?: boolean;
     themeId?: MobileThemeId;
     lightThemeId?: MobileThemeId;
     darkThemeId?: MobileThemeId;
@@ -302,6 +306,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
+  }
+  if (typeof parsed.threadNotificationsEnabled === "boolean") {
+    preferences.threadNotificationsEnabled = parsed.threadNotificationsEnabled;
   }
   if (
     typeof parsed.themeId === "string" &&

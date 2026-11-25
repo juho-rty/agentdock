@@ -2,7 +2,6 @@ import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { isSharedSlotTab } from "./navigation-tab-order";
 import { SharedSlotTitle } from "./SharedSlotTitle";
 import { WORKSPACE_TAB_LABELS, useEnabledNavigationTabs } from "./navigation-tabs";
-import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
 import { WorkspaceSettingsList } from "../../settings/SettingsRouteScreen";
 import { WorkspaceSectionToolbar } from "./WorkspaceSectionToolbar";
 import { useNavigation } from "@react-navigation/native";
@@ -29,8 +28,7 @@ import {
 import { HomeRouteScreen } from "../../home/HomeRouteScreen";
 import { WorkspaceConnectionTitle } from "../../home/WorkspaceConnectionTitle";
 import { useAdaptiveWorkspaceLayout } from "../AdaptiveWorkspaceLayout";
-import { PullRequestsScreen } from "../../pull-requests/PullRequestsScreen";
-import { IssuesScreen } from "../../issues/IssuesScreen";
+import { lazyScreen } from "../../../lib/lazyScreen";
 import {
   WorkspaceTabsContext,
   WorkspaceTabsProvider,
@@ -45,6 +43,16 @@ import {
   useSystemWorkspaceTabBar,
 } from "./useSystemWorkspaceTabBar";
 import { openSettings } from "../../settings/settings-navigation";
+
+const PullRequestsScreen = lazyScreen(() =>
+  import("../../pull-requests/PullRequestsScreen").then((m) => ({ default: m.PullRequestsScreen })),
+);
+const IssuesScreen = lazyScreen(() =>
+  import("../../issues/IssuesScreen").then((m) => ({ default: m.IssuesScreen })),
+);
+const LazyWorkspaceExtraTab = lazyScreen(() =>
+  import("./WorkspaceExtraTab").then((m) => ({ default: m.WorkspaceExtraTab })),
+);
 
 const TAB_TITLES = WORKSPACE_TAB_LABELS;
 
@@ -70,7 +78,10 @@ function WorkspaceRootTitle(props: {
             <SharedSlotTitle tab={state.selectedTab} />
           ) : (
             <CompactBrandTitle
-              accessibilityLabel={gt("{product}, {title}", { product: "T3 Code", title: tabTitle })}
+              accessibilityLabel={gt("{product}, {title}", {
+                product: "AgentDock",
+                title: tabTitle,
+              })}
               fit
             />
           )
@@ -183,7 +194,7 @@ function WorkspaceRootContent() {
           ) : state.selectedTab === "issues" ? (
             <IssuesScreen />
           ) : (
-            <WorkspaceExtraTab tab={state.selectedTab} />
+            <LazyWorkspaceExtraTab tab={state.selectedTab} />
           )}
         </SafeAreaInsetsContext>
         {deviceType !== "pad" && deviceType !== "phone" && sidebarPicker ? (

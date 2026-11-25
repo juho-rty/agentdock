@@ -27,6 +27,7 @@ import { VoiceInputSession } from "./voiceInputSession";
 import { createVoiceRecordingPermission } from "./voiceRecordingPermission";
 import { voiceRouteAtom } from "./voiceDestination";
 import { makePermissionStatusAtom } from "../../lib/permissionStatusAtom";
+import { isMobileLiteBuild } from "../../lib/liteMode";
 import {
   acquireAudioSession,
   activateAudioSession,
@@ -60,11 +61,13 @@ export const localVoiceTranscriberAtom = makePermissionStatusAtom<
   VoiceTranscriber | null | "checking"
 >({
   label: "mobile:voice-input:transcriber",
-  initial: "checking",
-  read: () => getLocalVoiceTranscriber().catch(() => null),
+  initial: isMobileLiteBuild() ? null : "checking",
+  read: () =>
+    isMobileLiteBuild() ? Promise.resolve(null) : getLocalVoiceTranscriber().catch(() => null),
 }).pipe(Atom.keepAlive);
 
 const voiceInputAvailableAtom = Atom.make((get) => {
+  if (isMobileLiteBuild()) return false;
   const route = get(voiceRouteAtom);
   if (route) return route.transcriber !== null;
   const transcriber = get(localVoiceTranscriberAtom);

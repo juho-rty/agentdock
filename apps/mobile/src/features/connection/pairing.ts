@@ -81,7 +81,7 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (url.protocol === "t3code:") {
+    if (url.protocol === "t3code:" || url.protocol === "agentdock:") {
       const pairingUrl = url.searchParams.get(MOBILE_PAIRING_URL_PARAM)?.trim() ?? "";
       if (pairingUrl.length > 0) {
         return pairingUrl;
@@ -90,4 +90,17 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
   } catch {}
 
   return trimmed;
+}
+
+export function candidateMobilePairingHosts(pairing: {
+  readonly relayUrl: string;
+  readonly directUrl?: string | undefined;
+}): ReadonlyArray<string> {
+  return [
+    ...new Set(
+      [pairing.directUrl, pairing.relayUrl]
+        .map((url) => url?.trim() ?? "")
+        .filter((url) => url.length > 0),
+    ),
+  ];
 }

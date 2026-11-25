@@ -9,6 +9,11 @@ import { useGT, useMessages } from "gt-react-native";
 
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
+import {
+  chatProjectKeys,
+  filterThreadsForMode,
+  isChatThread,
+} from "@t3tools/client-runtime/state/projects";
 
 import { useProjects } from "../../state/entities";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
@@ -49,10 +54,10 @@ export function HomeRouteScreen() {
   const { layout, setPrimarySidebarSearchQuery, startNewTask } = useAdaptiveWorkspaceLayout();
   const { primarySidebarSearchQuery } = useWorkspacePaneState();
   const selectDetail = useSelectWorkspaceDetail();
-  const projects = useProjects();
+  const allProjects = useProjects();
   // Stop rebuilding the streaming thread list while Thread covers Home.
   const visible = useHomeRouteVisible();
-  const threads = useLaunchingThreads(
+  const allThreads = useLaunchingThreads(
     useAtomValueWhileVisible(steadyNavigationThreadShellsAtom, visible),
   );
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
@@ -106,7 +111,7 @@ export function HomeRouteScreen() {
     regenerateThreadTitle,
     unsettleThread,
   } = useThreadListActions();
-  const pendingTasks = usePendingNewTasks();
+  const allPendingTasks = usePendingNewTasks();
   const { openPendingTask, confirmDeletePendingTask } =
     usePendingTaskListActions(selectThreadRoute);
   const environments = homeListFilterEnvironments(workspaceEnvironments);
@@ -118,8 +123,25 @@ export function HomeRouteScreen() {
     options: listOptions,
     setSelectedEnvironmentId,
     setSelectedProjectKey,
+    setThreadMode,
   } = useHomeListOptions(availableEnvironmentIds);
-  const selectedEnvironmentId = listOptions.selectedEnvironmentId;
+  const threadMode = listOptions.threadMode;
+  const chatMode = threadMode === "chat";
+  const chatKeys = useMemo(() => chatProjectKeys(allProjects), [allProjects]);
+  const projects = useMemo(
+    () => allProjects.filter((project) => (project.isChat === true) === chatMode),
+    [allProjects, chatMode],
+  );
+  const threads = useMemo(
+    () => filterThreadsForMode(allThreads, threadMode, chatKeys),
+    [allThreads, threadMode, chatKeys],
+  );
+  const pendingTasks = useMemo(
+    () => allPendingTasks.filter((task) => isChatThread(task, chatKeys) === chatMode),
+    [allPendingTasks, chatKeys, chatMode],
+  );
+  // Chat lists every computer's chats together, so the environment and project scope rest.
+  const selectedEnvironmentId = chatMode ? null : listOptions.selectedEnvironmentId;
   const projectScopes = useMemo(
     () =>
       buildHomeProjectScopes(
@@ -147,8 +169,9 @@ export function HomeRouteScreen() {
       })),
     [projectScopes, threads],
   );
-  const selectedProjectKey =
-    resolveHomeProjectFilterScope(projectScopes, projects, listOptions)?.key ?? null;
+  const selectedProjectKey = chatMode
+    ? null
+    : (resolveHomeProjectFilterScope(projectScopes, projects, listOptions)?.key ?? null);
 
   if (layout.usesSplitView && !nativePrimaryColumn) {
     return (
@@ -232,6 +255,9 @@ export function HomeRouteScreen() {
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
           threads={threads}
+          threadMode={threadMode}
+          onThreadModeChange={setThreadMode}
+          hasThreadsOutsideMode={allThreads.length > threads.length}
           visible={visible}
         />
         <ThreadUndoNotice visible={visible} />

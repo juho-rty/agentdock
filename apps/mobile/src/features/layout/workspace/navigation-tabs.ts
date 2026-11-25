@@ -11,6 +11,7 @@ import {
   type NavigationTab,
 } from "./navigation-tab-order";
 import type { AppSymbolName } from "../../../components/ui/AppSymbol";
+import { isMobileLiteBuild } from "../../../lib/liteMode";
 import { mobilePreferencesAtom } from "../../../state/preferences";
 import { PullRequestGlyph } from "../../pull-requests/pullRequestGlyphs";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
@@ -20,7 +21,7 @@ export const WORKSPACE_TAB_LABELS = {
   ...NAVIGATION_TAB_LABELS,
   ...(Platform.OS === "ios"
     ? {
-        threads: msg("Chats", { $context: "navigation tab, list of chat threads" }),
+        threads: msg("Threads", { $context: "navigation tab, list of threads" }),
         pullRequests: msg("PRs", { $context: "navigation tab, pull requests" }),
       }
     : {}),
@@ -41,11 +42,18 @@ export function useNavigationTabOrder() {
   return resolveWorkspaceTabOrder(saved);
 }
 
+const LITE_DEFAULT_HIDDEN_TABS: readonly NavigationTab[] = ["pullRequests", "issues"];
+
 export function useHiddenNavigationTabs() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const selected = useWorkspaceTabs()?.state.selectedTab ?? "threads";
   const saved = AsyncResult.isSuccess(preferences) ? preferences.value : undefined;
+  const liteDefaultHidden =
+    isMobileLiteBuild() && saved?.hiddenNavigationTabs === undefined
+      ? LITE_DEFAULT_HIDDEN_TABS
+      : [];
   return [
+    ...liteDefaultHidden,
     ...(navigationCustomizationAvailable()
       ? resolveHiddenNavigationTabs(saved?.hiddenNavigationTabs)
       : []),

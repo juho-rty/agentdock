@@ -4,8 +4,6 @@ import {
   applyWslEnableSelection,
   isServerNetworkAccessible,
   parseManualDesktopSshTarget,
-  phoneAccessEndpoint,
-  resolveAdvertisedEndpointPairingUrl,
   resolveAccessEnvironmentId,
   resolveCurrentOriginPairingUrl,
   resolveTailscaleServeBaseUrl,
@@ -237,33 +235,5 @@ describe("isServerNetworkAccessible", () => {
     { authPolicy: null, directEndpoints: served, expected: false },
   ] as const)("$authPolicy with $directEndpoints.length endpoints", (row) => {
     expect(isServerNetworkAccessible(row)).toBe(row.expected);
-  });
-});
-
-describe("phoneAccessEndpoint", () => {
-  const status = {
-    enabled: true,
-    state: "connected",
-    relayUrl: "https://agentdock-phone.example.workers.dev",
-    tunnelUrl: "https://quiet-river.trycloudflare.com",
-    error: null,
-  } as const;
-
-  it("pairs phones straight through the relay once connected", () => {
-    const endpoint = phoneAccessEndpoint(status, "Phone");
-    expect(endpoint).toMatchObject({
-      httpBaseUrl: "https://agentdock-phone.example.workers.dev/",
-      wsBaseUrl: "wss://agentdock-phone.example.workers.dev/",
-      reachability: "public",
-      isDefault: true,
-    });
-    expect(endpoint && resolveAdvertisedEndpointPairingUrl(endpoint, "TOKEN")).toMatch(
-      /^https:\/\/agentdock-phone\.example\.workers\.dev\/pair/u,
-    );
-  });
-
-  it("offers nothing until the relay has the tunnel", () => {
-    expect(phoneAccessEndpoint({ ...status, state: "registering" }, "Phone")).toBeNull();
-    expect(phoneAccessEndpoint(null, "Phone")).toBeNull();
   });
 });

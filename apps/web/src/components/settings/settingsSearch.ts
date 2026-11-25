@@ -1361,13 +1361,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     localBackendManagementOnly: true,
   },
   {
-    id: "phone-access",
-    title: msg("Phone access (Cloudflare)"),
-    to: "/settings/access",
-    targetId: "connections-environment",
-    searchTerms: [msg("phone mobile cloudflare tunnel workers internet anywhere")],
-  },
-  {
     id: "wsl-backend",
     title: msg("WSL backend"),
     to: "/settings/access",

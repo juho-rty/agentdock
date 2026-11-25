@@ -5,13 +5,14 @@ import { useState } from "react";
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./ui/AppText";
-import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
+import { isMobileLiteBuild } from "../lib/liteMode";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
 const BRAND_MAX_FONT_SCALE = 1.4;
-const WORDMARK_SUFFIX = "Code";
+const BRAND_PREFIX = "Agent";
+const WORDMARK_SUFFIX = "Dock";
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
@@ -27,14 +28,18 @@ export function CompactBrandTitle(
   } = {},
 ) {
   const gt = useGT();
-  const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
+  const appVariant = Constants.expoConfig?.extra?.appVariant;
+  const stageLabel = resolveMobileStageLabel(appVariant);
+  const hideProductionBadge =
+    isMobileLiteBuild() && (appVariant === undefined || appVariant === "production");
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
   // Measured only while the badge shows, so hiding it does not make it look like it fits.
   const [fullWidth, setFullWidth] = useState<number | null>(null);
   const showStage =
-    !props.fit || availableWidth === null || fullWidth === null || fullWidth <= availableWidth;
+    !hideProductionBadge &&
+    (!props.fit || availableWidth === null || fullWidth === null || fullWidth <= availableWidth);
 
   const title = (
     <View
@@ -42,18 +47,24 @@ export function CompactBrandTitle(
         props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
       }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? gt("T3 Code, Threads")}
+      accessibilityLabel={props.accessibilityLabel ?? gt("AgentDock, Threads")}
       accessible
       role="heading"
-      className="flex-row items-center gap-1.5"
+      className="flex-row items-center gap-0.5"
       style={[
         { marginLeft: titleOffset },
-        Platform.OS === "android" && { gap: 5.25 * scale },
+        Platform.OS === "android" && { gap: 2 * scale },
         props.fit && { flexShrink: 0 },
       ]}
     >
-      <T3Wordmark colorClassName="accent-icon" height={Math.round(15 * scale)} />
-      {/* A logo beside a fixed-size wordmark: it may grow with Dynamic Type, not crowd the bar. */}
+      <Text
+        allowFontScaling={props.allowFontScaling}
+        maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
+        className="font-t3-bold text-foreground"
+        style={{ fontSize: 21 * scale, letterSpacing: -0.6 * scale }}
+      >
+        {BRAND_PREFIX}
+      </Text>
       <Text
         allowFontScaling={props.allowFontScaling}
         maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}

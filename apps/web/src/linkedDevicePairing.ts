@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 
 import { environmentCatalog } from "./connection/catalog";
 import { connectPairing } from "./connection/onboarding";
-import { isElectron } from "./env";
 import { PrimaryEnvironmentHttpClient } from "./environments/primary/httpClient";
 import { runPrimaryHttp } from "./lib/runtime";
 import { appAtomRegistry } from "./rpc/atomRegistry";
@@ -47,16 +46,6 @@ function readKnownEnvironmentIds(): ReadonlyArray<EnvironmentId> | null {
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAtMs = 0;
 
-function candidateHostsForPairing(pairing: {
-  readonly relayUrl: string;
-  readonly directUrl?: string | undefined;
-}): ReadonlyArray<string> {
-  const raw = isElectron
-    ? [pairing.directUrl, pairing.relayUrl]
-    : [pairing.relayUrl, pairing.directUrl];
-  return [...new Set(raw.map((url) => url?.trim() ?? "").filter((url) => url.length > 0))];
-}
-
 async function pairLinkedEnvironments(known: ReadonlyArray<EnvironmentId>): Promise<void> {
   const added = readAdded();
   const { pairings } = await runPrimaryHttp(
@@ -75,22 +64,20 @@ async function pairLinkedEnvironments(known: ReadonlyArray<EnvironmentId>): Prom
     ),
   );
   for (const pairing of pairings) {
-    for (const host of candidateHostsForPairing(pairing)) {
-      const result = await runAtomCommand(
-        appAtomRegistry,
-        connectPairing,
-        {
-          host,
-          pairingCode: pairing.credential,
-          expectedEnvironmentId: pairing.environmentId,
-        },
-        { reportFailure: false },
-      );
-      if (result._tag === "Success") {
-        rememberAdded(pairing.environmentId);
-        break;
-      }
-    }
+    // Older computers may still send a `relayUrl`; nothing answers there any more.
+    const host = pairing.directUrl?.trim() ?? "";
+    if (host === "") continue;
+    const result = await runAtomCommand(
+      appAtomRegistry,
+      connectPairing,
+      {
+        host,
+        pairingCode: pairing.credential,
+        expectedEnvironmentId: pairing.environmentId,
+      },
+      { reportFailure: false },
+    );
+    if (result._tag === "Success") rememberAdded(pairing.environmentId);
   }
 }
 

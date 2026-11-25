@@ -62,25 +62,3 @@ export class RelayClientInstallFailedError extends Schema.TaggedError<RelayClien
     message: Schema.String,
   },
 ) {}
-
-export const PhoneAccessStateSchema = Schema.Literals([
-  "off",
-  "starting",
-  "registering",
-  "connected",
-  "claimed_elsewhere",
-  "error",
-]);
-export type PhoneAccessState = typeof PhoneAccessStateSchema.Type;
-
-/** The Cloudflare phone relay: a quick tunnel from this host, reached through a stable Worker URL. */
-export const PhoneAccessStatusSchema = Schema.Struct({
-  enabled: Schema.Boolean,
-  state: PhoneAccessStateSchema,
-  /** The stable URL phones open; it stays the same across tunnel restarts. */
-  relayUrl: Schema.String,
-  /** The current quick tunnel, or null before one is up. */
-  tunnelUrl: Schema.NullOr(Schema.String),
-  error: Schema.NullOr(Schema.String),
-});
-export type PhoneAccessStatus = typeof PhoneAccessStatusSchema.Type;

@@ -190,7 +190,12 @@
       ],
       "ios": {
         "exclude": [
-          "react-native-pdf-jsi"
+          "react-native-pdf-jsi",
+          "@clerk/expo",
+          "@clerk/expo-native-components",
+          "expo-observe",
+          "expo-updates",
+          "@react-native-ai/apple"
         ]
       }
     }

@@ -2,7 +2,7 @@
  * Pairs a phone with the environments linked to the one it already uses, so each machine
  * needs no pairing link of its own. The phone asks its environment (`linkedPairings`),
  * which asks every link with the link's token (`issueForLink`); the phone then redeems
- * each code at that machine's phone relay.
+ * each code at the address this environment reaches that link at.
  */
 import {
   AuthAccessWriteScope,
@@ -27,11 +27,12 @@ import {
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-import * as PhoneAccess from "../phone/PhoneAccess.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 
 const ISSUE_PATH = "/api/peer-link/device-pairing";
-const ISSUE_TIMEOUT = "15 seconds";
+// Shorter than the phone's request timeout even after `links.list` has probed every link, so
+// one slow link cannot cost the phone the codes the other links already issued.
+const ISSUE_TIMEOUT = "6 seconds";
 
 const forbidden = (message: string) => Effect.fail(new EnvironmentHttpForbiddenError({ message }));
 
@@ -41,7 +42,6 @@ export const layer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const environment = yield* ServerEnvironment.ServerEnvironment;
-    const phoneAccess = yield* PhoneAccess.PhoneAccess;
     const links = yield* PeerLinks.PeerLinks;
     const httpClient = yield* HttpClient.HttpClient;
 
@@ -52,7 +52,6 @@ export const layer = HttpApiBuilder.group(
         httpClient.execute,
         Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap(HttpClientResponse.schemaBodyJson(LinkedDevicePairing)),
-        Effect.timeout(ISSUE_TIMEOUT),
       );
       // A link that answers as another machine must not hand the client that machine's code.
       return response.environmentId === environmentId
@@ -79,8 +78,6 @@ export const layer = HttpApiBuilder.group(
               "Only a full-access linked environment may pair a device here.",
             );
           }
-          const status = yield* phoneAccess.getStatus;
-          const relayUrl = status.enabled && status.state === "connected" ? status.relayUrl : "";
           const descriptor = yield* environment.getDescriptor;
           const issued = yield* serverAuth
             .issuePairingCredential({
@@ -98,7 +95,8 @@ export const layer = HttpApiBuilder.group(
           return {
             environmentId: descriptor.environmentId,
             label: descriptor.label,
-            relayUrl,
+            // Nothing relays any more; the field stays so older phones and computers decode this.
+            relayUrl: "",
             credential: issued.credential,
           };
         }),
@@ -112,9 +110,11 @@ export const layer = HttpApiBuilder.group(
           const known = new Set<string>(args.payload.knownEnvironmentIds);
           const linked = yield* links.list.pipe(Effect.orElseSucceed(() => []));
           const pairings = yield* Effect.forEach(
-            linked.filter((link) => !known.has(link.environmentId)),
+            // A link that did not answer the probe would only hold the reachable ones back.
+            linked.filter((link) => link.status === "reachable" && !known.has(link.environmentId)),
             (link) =>
               askLink(link.environmentId).pipe(
+                Effect.timeout(ISSUE_TIMEOUT),
                 // An unreachable or unwilling link is skipped; the phone asks again next start.
                 Effect.catchCause((cause) =>
                   Effect.logInfo("linked environment gave no phone pairing", {

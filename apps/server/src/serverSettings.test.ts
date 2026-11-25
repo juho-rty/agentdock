@@ -256,6 +256,31 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("loads a settings file that still has the removed phone access keys", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fs.writeFileString(
+        config.settingsPath,
+        `{
+          "phoneAccessEnabled": true,
+          "phoneRelayUrl": "https://relay.example.workers.dev",
+          "enableAgentBrowserAccess": false
+        }`,
+      );
+
+      const settings = yield* service.getSettings;
+      assert.isFalse(settings.enableAgentBrowserAccess);
+      assert.notProperty(settings, "phoneAccessEnabled");
+
+      yield* service.updateSettings({ keepAwakeWhileAgentsWork: false });
+      const saved = yield* service.getSettings;
+      assert.isFalse(saved.enableAgentBrowserAccess);
+      assert.isFalse(saved.keepAwakeWhileAgentsWork);
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("keeps an override key a newer server saved when a project setting is edited", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;

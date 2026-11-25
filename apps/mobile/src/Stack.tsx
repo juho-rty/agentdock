@@ -1,8 +1,4 @@
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
-import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
-import { PullRequestGuideStopScreen } from "./features/pull-requests/guide/PullRequestGuideScreen";
-import { PullRequestInlineCommentScreen } from "./features/pull-requests/PullRequestInlineCommentScreen";
-import { PullRequestDiscussionScreen } from "./features/pull-requests/PullRequestDiscussionScreen";
 import { createWorkspaceStackNavigator } from "./features/layout/createWorkspaceStackNavigator";
 import {
   createPathConfigForStaticNavigation,
@@ -19,6 +15,7 @@ import { useResolveClassNames } from "uniwind";
 
 import { AppText as Text } from "./components/ui/AppText";
 import { androidWorkspaceDestinationAnimation } from "./lib/android-workspace-navigation";
+import { lazyScreen } from "./lib/lazyScreen";
 import { getCompactBrandHeaderOptions } from "./features/layout/workspace/brand-header-options";
 import { WorkspaceConnectionStatusProvider } from "./features/home/WorkspaceConnectionTitle";
 import { WorkspaceRootScreen } from "./features/layout/workspace/WorkspaceRootScreen";
@@ -29,29 +26,11 @@ import {
 } from "./features/home/home-route-visibility";
 import { AndroidWorkspaceTabsProvider } from "./features/layout/workspace/AndroidWorkspaceTabsProvider";
 import {
-  PullRequestRouteScreen,
-  PullRequestFileRouteScreen,
-} from "./features/pull-requests/PullRequestRouteScreen";
-import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
-import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
-import { PullRequestReviewersScreen } from "./features/pull-requests/PullRequestReviewersScreen";
-import { PullRequestLabelsScreen } from "./features/pull-requests/PullRequestLabelsScreen";
-import { PullRequestEditScreen } from "./features/pull-requests/PullRequestEditScreen";
-import { PullRequestFilterSearchScreen } from "./features/pull-requests/PullRequestFilterSearchScreen";
-import { IssueAssigneesScreen } from "./features/issues/IssueAssigneesScreen";
-import { IssueEditScreen } from "./features/issues/IssueEditScreen";
-import { IssueLabelsScreen } from "./features/issues/IssueLabelsScreen";
-import { IssueFilterSearchScreen } from "./features/issues/IssueFilterSearchScreen";
-import { IssueRouteScreen } from "./features/issues/IssueRouteScreen";
-import {
   RenderErrorBoundary,
   RenderFailureView,
   type RenderFailureProps,
 } from "./components/RenderErrorBoundary";
-import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
-import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
-import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
 import {
   HardwareKeyboardCommandOverlay,
@@ -59,30 +38,19 @@ import {
 } from "./features/keyboard/HardwareKeyboardCommandProvider";
 import { ReviewCommentComposerSheet } from "./features/review/ReviewCommentComposerSheet";
 import { ReviewSheet } from "./features/review/ReviewSheet";
-import { ThreadTerminalRouteScreen } from "./features/terminal/ThreadTerminalRouteScreen";
-import { DevicePreviewRouteScreen } from "./features/devices/DevicePreviewRouteScreen";
-import { BrowserPreviewRouteScreen } from "./features/browser/BrowserPreviewRouteScreen";
 import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
-import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSheet";
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
-import { ThreadGuestShareSheet } from "./features/threads/ThreadGuestShareSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
 import {
   FullscreenThreadRouteScreen,
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
-import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
-import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
-import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
-import { AddProjectNewRoute } from "./features/projects/AddProjectNewRoute";
-import { AddProjectRepositoryRoute } from "./features/projects/AddProjectRepositoryRoute";
-import { AddProjectSourceRoute } from "./features/projects/AddProjectSourceRoute";
 import {
   NewTaskBranchPickerRouteScreen,
   NewTaskEnvironmentPickerRouteScreen,
@@ -94,52 +62,7 @@ import {
 import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { newTaskFlowKey } from "./features/threads/new-task-flow-state";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
-import { SettingsNavigationRouteScreen } from "./features/settings/SettingsNavigationRouteScreen";
-import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
-import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
-import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
-import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
-import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
-import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
-import {
-  SettingsIssueTrackerRouteScreen,
-  SettingsSourceControlProviderRouteScreen,
-} from "./features/settings/SettingsSourceControlDetailRouteScreens";
-import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-import { SettingsFollowUpRouteScreen } from "./features/settings/SettingsFollowUpRouteScreen";
-import { SettingsLanguageRouteScreen } from "./features/settings/SettingsLanguageRouteScreen";
-import {
-  SettingsEnvironmentMaintenanceRouteScreen,
-  SettingsThreadsRouteScreen,
-  SettingsWorktreesRouteScreen,
-  SettingsEnvironmentSourceControlRouteScreen,
-} from "./features/settings/SettingsServerControlsRouteScreen";
-import {
-  SettingsScheduledTasksRouteScreen,
-  SettingsScheduledTaskNewRouteScreen,
-  SettingsScheduledTaskEditRouteScreen,
-} from "./features/settings/SettingsScheduledTasksRouteScreen";
-import {
-  ScheduledTaskModelPickerRouteScreen,
-  ScheduledTaskBranchPickerRouteScreen,
-  ScheduledTaskThreadPickerRouteScreen,
-} from "./features/settings/ScheduledTaskPickerScreens";
-import { SettingsKeyboardRouteScreen } from "./features/settings/SettingsKeyboardRouteScreen";
-import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
-import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
-import { SettingsVoiceModelsRouteScreen } from "./features/settings/SettingsVoiceModelsRouteScreen";
-import {
-  SettingsOpenSourceLicenseRouteScreen,
-  SettingsOpenSourceLicensesRouteScreen,
-} from "./features/settings/SettingsOpenSourceLicensesRouteScreen";
-import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
-import { SettingsProjectOverviewRouteScreen } from "./features/settings/SettingsProjectOverviewRouteScreen";
-import { UsageLimitAccountScreen } from "./features/usage/UsageLimitsPooled";
-import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
-import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
-import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
-import { SettingsLabsRouteScreen } from "./features/settings/ThreadSettingsSections";
 import { SettingsEnvironmentFilterProvider } from "./features/settings/settings-environment-filter";
 import { openSettings, settingsOpenIn } from "./features/settings/settings-navigation";
 import { DEFAULT_SETTINGS_PAGE } from "./features/layout/workspace/workspace-tab-navigation";
@@ -153,6 +76,330 @@ import { deriveLayout } from "./lib/layout";
 import { useNativeLayoutMetrics } from "./native/native-layout-metrics";
 import { isPresentedRoute } from "./native/workspace-stack-projection";
 import { workspaceDetailRouter } from "./features/layout/workspace/workspace-detail-selection";
+
+const ComponentCatalogScreen = lazyScreen(() =>
+  import("./features/development/ComponentCatalogScreen").then((m) => ({
+    default: m.ComponentCatalogScreen,
+  })),
+);
+const PullRequestRouteScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestRouteScreen").then((m) => ({
+    default: m.PullRequestRouteScreen,
+  })),
+);
+const PullRequestFileRouteScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestRouteScreen").then((m) => ({
+    default: m.PullRequestFileRouteScreen,
+  })),
+);
+const PullRequestGuideStopScreen = lazyScreen(() =>
+  import("./features/pull-requests/guide/PullRequestGuideScreen").then((m) => ({
+    default: m.PullRequestGuideStopScreen,
+  })),
+);
+const PullRequestFilesSheet = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestFiles").then((m) => ({
+    default: m.PullRequestFilesSheet,
+  })),
+);
+const PullRequestReviewSheet = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestReviewSheet").then((m) => ({
+    default: m.PullRequestReviewSheet,
+  })),
+);
+const PullRequestReviewersScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestReviewersScreen").then((m) => ({
+    default: m.PullRequestReviewersScreen,
+  })),
+);
+const PullRequestLabelsScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestLabelsScreen").then((m) => ({
+    default: m.PullRequestLabelsScreen,
+  })),
+);
+const PullRequestEditScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestEditScreen").then((m) => ({
+    default: m.PullRequestEditScreen,
+  })),
+);
+const PullRequestFilterSearchScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestFilterSearchScreen").then((m) => ({
+    default: m.PullRequestFilterSearchScreen,
+  })),
+);
+const PullRequestDiscussionScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestDiscussionScreen").then((m) => ({
+    default: m.PullRequestDiscussionScreen,
+  })),
+);
+const PullRequestInlineCommentScreen = lazyScreen(() =>
+  import("./features/pull-requests/PullRequestInlineCommentScreen").then((m) => ({
+    default: m.PullRequestInlineCommentScreen,
+  })),
+);
+const IssueRouteScreen = lazyScreen(() =>
+  import("./features/issues/IssueRouteScreen").then((m) => ({ default: m.IssueRouteScreen })),
+);
+const IssueEditScreen = lazyScreen(() =>
+  import("./features/issues/IssueEditScreen").then((m) => ({ default: m.IssueEditScreen })),
+);
+const IssueLabelsScreen = lazyScreen(() =>
+  import("./features/issues/IssueLabelsScreen").then((m) => ({ default: m.IssueLabelsScreen })),
+);
+const IssueAssigneesScreen = lazyScreen(() =>
+  import("./features/issues/IssueAssigneesScreen").then((m) => ({
+    default: m.IssueAssigneesScreen,
+  })),
+);
+const IssueFilterSearchScreen = lazyScreen(() =>
+  import("./features/issues/IssueFilterSearchScreen").then((m) => ({
+    default: m.IssueFilterSearchScreen,
+  })),
+);
+const ArchivedThreadsRouteScreen = lazyScreen(() =>
+  import("./features/archive/ArchivedThreadsRouteScreen").then((m) => ({
+    default: m.ArchivedThreadsRouteScreen,
+  })),
+);
+const ConnectOnboardingRouteScreen = lazyScreen(() =>
+  import("./features/cloud/ConnectOnboardingRouteScreen").then((m) => ({
+    default: m.ConnectOnboardingRouteScreen,
+  })),
+);
+const ThreadFilesTreeScreen = lazyScreen(() =>
+  import("./features/files/ThreadFilesRouteScreen").then((m) => ({
+    default: m.ThreadFilesTreeScreen,
+  })),
+);
+const ThreadFileScreen = lazyScreen(() =>
+  import("./features/files/ThreadFilesRouteScreen").then((m) => ({ default: m.ThreadFileScreen })),
+);
+const ThreadTerminalRouteScreen = lazyScreen(() =>
+  import("./features/terminal/ThreadTerminalRouteScreen").then((m) => ({
+    default: m.ThreadTerminalRouteScreen,
+  })),
+);
+const DevicePreviewRouteScreen = lazyScreen(() =>
+  import("./features/devices/DevicePreviewRouteScreen").then((m) => ({
+    default: m.DevicePreviewRouteScreen,
+  })),
+);
+const BrowserPreviewRouteScreen = lazyScreen(() =>
+  import("./features/browser/BrowserPreviewRouteScreen").then((m) => ({
+    default: m.BrowserPreviewRouteScreen,
+  })),
+);
+const McpAppFullscreenScreen = lazyScreen(() =>
+  import("./features/threads/McpAppFullscreenScreen").then((m) => ({
+    default: m.McpAppFullscreenScreen,
+  })),
+);
+const ThreadGuestShareSheet = lazyScreen(() =>
+  import("./features/threads/ThreadGuestShareSheet").then((m) => ({
+    default: m.ThreadGuestShareSheet,
+  })),
+);
+const ThreadPullRequestsSheet = lazyScreen(() =>
+  import("./features/threads/ThreadPullRequestsSheet").then((m) => ({
+    default: m.ThreadPullRequestsSheet,
+  })),
+);
+const AddProjectSourceRoute = lazyScreen(() =>
+  import("./features/projects/AddProjectSourceRoute").then((m) => ({
+    default: m.AddProjectSourceRoute,
+  })),
+);
+const AddProjectRepositoryRoute = lazyScreen(() =>
+  import("./features/projects/AddProjectRepositoryRoute").then((m) => ({
+    default: m.AddProjectRepositoryRoute,
+  })),
+);
+const AddProjectDestinationRoute = lazyScreen(() =>
+  import("./features/projects/AddProjectDestinationRoute").then((m) => ({
+    default: m.AddProjectDestinationRoute,
+  })),
+);
+const AddProjectLocalRoute = lazyScreen(() =>
+  import("./features/projects/AddProjectLocalRoute").then((m) => ({
+    default: m.AddProjectLocalRoute,
+  })),
+);
+const AddProjectNewRoute = lazyScreen(() =>
+  import("./features/projects/AddProjectNewRoute").then((m) => ({ default: m.AddProjectNewRoute })),
+);
+const SettingsNavigationRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsNavigationRouteScreen").then((m) => ({
+    default: m.SettingsNavigationRouteScreen,
+  })),
+);
+const SettingsAppearanceRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsAppearanceRouteScreen").then((m) => ({
+    default: m.SettingsAppearanceRouteScreen,
+  })),
+);
+const SettingsClientStorageRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsClientStorageRouteScreen").then((m) => ({
+    default: m.SettingsClientStorageRouteScreen,
+  })),
+);
+const SettingsDiagnosticsRouteScreen = lazyScreen(() =>
+  import("./features/diagnostics/SettingsDiagnosticsRouteScreen").then((m) => ({
+    default: m.SettingsDiagnosticsRouteScreen,
+  })),
+);
+const SettingsProviderAccountsRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsProviderAccountsRouteScreen").then((m) => ({
+    default: m.SettingsProviderAccountsRouteScreen,
+  })),
+);
+const SettingsAuthRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsAuthRouteScreen").then((m) => ({
+    default: m.SettingsAuthRouteScreen,
+  })),
+);
+const SettingsEnvironmentDetailRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsEnvironmentDetailRouteScreen").then((m) => ({
+    default: m.SettingsEnvironmentDetailRouteScreen,
+  })),
+);
+const SettingsIssueTrackerRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsSourceControlDetailRouteScreens").then((m) => ({
+    default: m.SettingsIssueTrackerRouteScreen,
+  })),
+);
+const SettingsSourceControlProviderRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsSourceControlDetailRouteScreens").then((m) => ({
+    default: m.SettingsSourceControlProviderRouteScreen,
+  })),
+);
+const SettingsEnvironmentsRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsEnvironmentsRouteScreen").then((m) => ({
+    default: m.SettingsEnvironmentsRouteScreen,
+  })),
+);
+const SettingsFollowUpRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsFollowUpRouteScreen").then((m) => ({
+    default: m.SettingsFollowUpRouteScreen,
+  })),
+);
+const SettingsLanguageRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsLanguageRouteScreen").then((m) => ({
+    default: m.SettingsLanguageRouteScreen,
+  })),
+);
+const SettingsEnvironmentMaintenanceRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsServerControlsRouteScreen").then((m) => ({
+    default: m.SettingsEnvironmentMaintenanceRouteScreen,
+  })),
+);
+const SettingsThreadsRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsServerControlsRouteScreen").then((m) => ({
+    default: m.SettingsThreadsRouteScreen,
+  })),
+);
+const SettingsWorktreesRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsServerControlsRouteScreen").then((m) => ({
+    default: m.SettingsWorktreesRouteScreen,
+  })),
+);
+const SettingsEnvironmentSourceControlRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsServerControlsRouteScreen").then((m) => ({
+    default: m.SettingsEnvironmentSourceControlRouteScreen,
+  })),
+);
+const SettingsScheduledTasksRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsScheduledTasksRouteScreen").then((m) => ({
+    default: m.SettingsScheduledTasksRouteScreen,
+  })),
+);
+const SettingsScheduledTaskNewRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsScheduledTasksRouteScreen").then((m) => ({
+    default: m.SettingsScheduledTaskNewRouteScreen,
+  })),
+);
+const SettingsScheduledTaskEditRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsScheduledTasksRouteScreen").then((m) => ({
+    default: m.SettingsScheduledTaskEditRouteScreen,
+  })),
+);
+const ScheduledTaskModelPickerRouteScreen = lazyScreen(() =>
+  import("./features/settings/ScheduledTaskPickerScreens").then((m) => ({
+    default: m.ScheduledTaskModelPickerRouteScreen,
+  })),
+);
+const ScheduledTaskBranchPickerRouteScreen = lazyScreen(() =>
+  import("./features/settings/ScheduledTaskPickerScreens").then((m) => ({
+    default: m.ScheduledTaskBranchPickerRouteScreen,
+  })),
+);
+const ScheduledTaskThreadPickerRouteScreen = lazyScreen(() =>
+  import("./features/settings/ScheduledTaskPickerScreens").then((m) => ({
+    default: m.ScheduledTaskThreadPickerRouteScreen,
+  })),
+);
+const SettingsKeyboardRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsKeyboardRouteScreen").then((m) => ({
+    default: m.SettingsKeyboardRouteScreen,
+  })),
+);
+const SettingsLegalRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsLegalRouteScreen").then((m) => ({
+    default: m.SettingsLegalRouteScreen,
+  })),
+);
+const SettingsVoiceRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsVoiceRouteScreen").then((m) => ({
+    default: m.SettingsVoiceRouteScreen,
+  })),
+);
+const SettingsVoiceModelsRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsVoiceModelsRouteScreen").then((m) => ({
+    default: m.SettingsVoiceModelsRouteScreen,
+  })),
+);
+const SettingsOpenSourceLicenseRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsOpenSourceLicensesRouteScreen").then((m) => ({
+    default: m.SettingsOpenSourceLicenseRouteScreen,
+  })),
+);
+const SettingsOpenSourceLicensesRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsOpenSourceLicensesRouteScreen").then((m) => ({
+    default: m.SettingsOpenSourceLicensesRouteScreen,
+  })),
+);
+const SettingsProjectGroupingRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsProjectGroupingRouteScreen").then((m) => ({
+    default: m.SettingsProjectGroupingRouteScreen,
+  })),
+);
+const SettingsProjectOverviewRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsProjectOverviewRouteScreen").then((m) => ({
+    default: m.SettingsProjectOverviewRouteScreen,
+  })),
+);
+const UsageLimitAccountScreen = lazyScreen(() =>
+  import("./features/usage/UsageLimitsPooled").then((m) => ({
+    default: m.UsageLimitAccountScreen,
+  })),
+);
+const UsageRouteScreen = lazyScreen(() =>
+  import("./features/usage/UsageRouteScreen").then((m) => ({ default: m.UsageRouteScreen })),
+);
+const SettingsAboutRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsAboutRouteScreen").then((m) => ({
+    default: m.SettingsAboutRouteScreen,
+  })),
+);
+const SettingsNotificationsRouteScreen = lazyScreen(() =>
+  import("./features/settings/SettingsNotificationsRouteScreen").then((m) => ({
+    default: m.SettingsNotificationsRouteScreen,
+  })),
+);
+const SettingsLabsRouteScreen = lazyScreen(() =>
+  import("./features/settings/ThreadSettingsSections").then((m) => ({
+    default: m.SettingsLabsRouteScreen,
+  })),
+);
 
 const settingsPage = () => pageRoute({ itemStyle: "standard" });
 

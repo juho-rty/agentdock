@@ -15,6 +15,7 @@ import {
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
+import type { ThreadListMode } from "@t3tools/client-runtime/state/projects";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { type EnvironmentId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -111,6 +112,10 @@ interface HomeScreenProps {
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
+  readonly threadMode: ThreadListMode;
+  readonly onThreadModeChange: (mode: ThreadListMode) => void;
+  /** Keeps the list, and so the Agent | Chat switch, on screen while this mode is empty. */
+  readonly hasThreadsOutsideMode: boolean;
   readonly catalogState: WorkspaceState;
   readonly savedConnectionsById: Readonly<Record<string, SavedRemoteConnection>>;
   readonly environments: ReadonlyArray<
@@ -616,7 +621,9 @@ export function HomeScreen(props: HomeScreenProps) {
   const hasAnyThreads =
     props.threads.some((thread) => thread.archivedAt === null) ||
     props.pendingTasks.length > 0 ||
-    threadListV2Layout.settledCount > 0;
+    threadListV2Layout.settledCount > 0 ||
+    props.hasThreadsOutsideMode ||
+    (props.threadMode === "chat" && props.catalogState.hasLoadedShellSnapshot);
   // A hidden list gets no layout, so it never reports its rows as laid out.
   const hasRowsToLayOut = props.visible && hasAnyThreads && threadListV2Items.length > 0;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the native launch splash, which is outside React, until the rows are gone or this list unmounts; a layout effect runs before the splash hides in this commit
@@ -702,6 +709,8 @@ export function HomeScreen(props: HomeScreenProps) {
           selectedProjectKey={props.selectedProjectKey}
           onEnvironmentChange={props.onEnvironmentChange}
           onProjectChange={props.onProjectChange}
+          threadMode={props.threadMode}
+          onThreadModeChange={props.onThreadModeChange}
         />
       ) : null}
     </>
@@ -726,6 +735,12 @@ export function HomeScreen(props: HomeScreenProps) {
       <EmptyState
         title={gt("No results")}
         detail={gt('No threads matching "{query}".', { query: props.searchQuery })}
+        variant={Platform.OS === "android" ? "plain" : undefined}
+      />
+    ) : props.threadMode === "chat" ? (
+      <EmptyState
+        title={gt("No chats yet")}
+        detail={gt("Start a chat to ask something without a project or tools.")}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : v2ScopedProjectGroup !== null ? (

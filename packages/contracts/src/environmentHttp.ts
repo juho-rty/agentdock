@@ -1104,7 +1104,7 @@ class EnvironmentWebPushHttpApi extends HttpApiGroup.make("webPush")
 export const LinkedDevicePairing = Schema.Struct({
   environmentId: EnvironmentId,
   label: Schema.String,
-  /** The linked environment's phone relay: the address a phone can reach it at (empty when off). */
+  /** Always empty now; older phones and computers still require the field to decode. */
   relayUrl: Schema.String,
   /** Direct origin the primary environment reached this link at (for example Tailscale HTTPS). */
   directUrl: Schema.optionalKey(Schema.String),

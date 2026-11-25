@@ -30,7 +30,6 @@ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.t
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import * as WebPushSubscriptions from "../persistence/WebPushSubscriptions.ts";
-import { DEFAULT_PHONE_RELAY_URL } from "../phone/phoneRelay.ts";
 import {
   eventThreadId,
   makeAgentAwarenessPublishWorker,
@@ -85,8 +84,9 @@ const PEER_CALL_LIMITS: PeerMcpClient.PeerCallLimits = {
   runtimeMode: "approval-required",
   interactionMode: "default",
 };
-// Apple wants a contact in every token. The relay page is where this server's phones live.
-const VAPID_SUBJECT = DEFAULT_PHONE_RELAY_URL;
+// Apple wants a contact in every token. Only an identifier: nothing is served at this address,
+// and it stays as it is so the subscriptions phones already hold keep working.
+const VAPID_SUBJECT = "https://agentdock-phone.juho-agentdock.workers.dev";
 
 /** A topic may hold 32 URL-safe characters; thread ids can be longer or carry others. */
 function pushTopic(threadId: string): string {

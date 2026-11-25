@@ -87,17 +87,17 @@ backup, staged app, download and older version folders. Each kept a full app cop
 
 ## Phone
 
-From anywhere: in **Settings -> Sharing & access**, turn on **Phone access (Cloudflare)**.
-The server starts a Cloudflare quick tunnel and registers it with the
-`agentdock-phone` Worker, so phones always open
-<https://agentdock-phone.juho-agentdock.workers.dev>. Network access does not need to be
-on. Once the row shows that address, create a pairing link under **Authorized clients**
-(it uses the phone address by default) and open it or scan its QR code on the phone. Add
-the page to the home screen for an app-like window. The Worker, its deploy script and how
-to reset its claim are in `infra/phone-relay/README.md`.
+Phones reach each computer over Tailscale. Install Tailscale on the phone and on every
+computer and sign them in to the same tailnet. On a computer, open **Settings -> Sharing &
+access**, turn on **Tailscale HTTPS** (the server is then served at its `https://<name>.ts.net`
+address through Tailscale Serve), and create a pairing link under **Authorized clients**
+that uses that address. Open the link or scan its QR code on the phone, and add the page to
+the home screen for an app-like window.
 
-On the same Wi-Fi or Tailscale you can instead enable **Network access** and pair over
-the local address.
+Only one computer needs a pairing link. The phone then pairs by itself with every computer
+linked to that one with full access, at the Tailscale address the first computer reaches it at.
+
+On the same Wi-Fi you can instead enable **Network access** and pair over the local address.
 
 ## The old AgentDock
 

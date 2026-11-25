@@ -45,3 +45,20 @@ it.each([
   ]);
   expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
 });
+
+it("configures streamlined AgentDock Personal Team iOS builds without paid entitlements", async () => {
+  vi.resetModules();
+  vi.stubEnv("APP_VARIANT", "production");
+  vi.stubEnv("T3CODE_IOS_PERSONAL_TEAM", "1");
+  vi.stubEnv("T3CODE_IOS_TEAM_ID", "FA4T62CK96");
+  const config = (await import("./app.config.ts")).default;
+
+  expect(config.name).toBe("AgentDock");
+  expect(config.scheme).toEqual(["agentdock", "t3code"]);
+  expect(config.ios?.bundleIdentifier).toBe("kr.ac.snu.jeongjuho.agentdock");
+  expect(config.ios?.appleTeamId).toBe("FA4T62CK96");
+  expect(config.ios?.associatedDomains).toBeUndefined();
+  expect(config.ios?.infoPlist?.UIBackgroundModes).toBeUndefined();
+  expect(config.updates).toBeUndefined();
+  expect(config.extra?.liteBuild).toBe(true);
+});

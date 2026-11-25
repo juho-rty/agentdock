@@ -1,3 +1,4 @@
+import type { ThreadListMode } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentId, SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { DEFAULT_SIDEBAR_PROJECT_SORT_ORDER } from "@t3tools/contracts";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -11,6 +12,7 @@ import type { HomeProjectSortOrder } from "./homeThreadList";
 export interface HomeListOptions {
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly selectedProjectKey: string | null;
+  readonly threadMode: ThreadListMode;
   readonly projectSortOrder: HomeProjectSortOrder;
 }
 
@@ -22,6 +24,7 @@ function defaultHomeListOptions(filters?: ThreadListFilters): HomeListOptions {
   return {
     selectedEnvironmentId: filters?.environmentId ?? null,
     selectedProjectKey: filters?.projectKey ?? null,
+    threadMode: filters?.mode ?? "agent",
     projectSortOrder:
       DEFAULT_SIDEBAR_PROJECT_SORT_ORDER === "manual"
         ? "updated_at"
@@ -57,12 +60,14 @@ export function HomeListOptionsProvider({
     registry.set(optionsAtom, next);
     if (
       next.selectedEnvironmentId !== current.selectedEnvironmentId ||
-      next.selectedProjectKey !== current.selectedProjectKey
+      next.selectedProjectKey !== current.selectedProjectKey ||
+      next.threadMode !== current.threadMode
     ) {
       savePreferences({
         threadListFilters: {
           environmentId: next.selectedEnvironmentId,
           projectKey: next.selectedProjectKey,
+          mode: next.threadMode,
         },
       });
     }
@@ -98,6 +103,9 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
   const setSelectedProjectKey = (value: string | null) => {
     updateOptions({ selectedProjectKey: value });
   };
+  const setThreadMode = (value: ThreadListMode) => {
+    updateOptions({ threadMode: value });
+  };
   const setProjectSortOrder = (value: HomeProjectSortOrder) => {
     updateOptions({ projectSortOrder: value });
   };
@@ -105,6 +113,7 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
     options: resolvedOptions,
     setSelectedEnvironmentId,
     setSelectedProjectKey,
+    setThreadMode,
     setProjectSortOrder,
   } as const;
 }

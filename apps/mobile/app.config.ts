@@ -11,12 +11,26 @@ Object.assign(process.env, repoEnv);
 process.env.EXPO_NO_TYPESCRIPT_SETUP = "1";
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
-const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
+const isIosPersonalTeamBuild =
+  (repoEnv.T3CODE_IOS_PERSONAL_TEAM ?? process.env.T3CODE_IOS_PERSONAL_TEAM) === "1";
+const isLiteBuild = (repoEnv.AGENTDOCK_MOBILE_FULL ?? process.env.AGENTDOCK_MOBILE_FULL) !== "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
   (APP_VARIANT === "development" ? "appVersion" : "fingerprint");
 
-const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+const rawPersonalTeamBundleId = (
+  repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID ?? process.env.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
+)?.trim();
+const defaultPersonalTeamBundleId =
+  APP_VARIANT === "development"
+    ? "kr.ac.snu.jeongjuho.agentdock.dev"
+    : APP_VARIANT === "preview"
+      ? "kr.ac.snu.jeongjuho.agentdock.preview"
+      : "kr.ac.snu.jeongjuho.agentdock";
+const personalTeamBundleIdentifier = rawPersonalTeamBundleId || defaultPersonalTeamBundleId;
+const personalTeamAppleTeamId = (
+  repoEnv.T3CODE_IOS_TEAM_ID ?? process.env.T3CODE_IOS_TEAM_ID
+)?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 // Compiled into the native project. Without a relay, Observe's native side could dispatch to
@@ -30,8 +44,8 @@ const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
   isIosPersonalTeamBuild &&
-  (!personalTeamBundleIdentifier ||
-    !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
+  rawPersonalTeamBundleId !== undefined &&
+  (!rawPersonalTeamBundleId || !IOS_BUNDLE_IDENTIFIER_PATTERN.test(rawPersonalTeamBundleId))
 ) {
   throw new Error(
     "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
@@ -232,40 +246,64 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 // Match iOS PostScript names on Android so RN and the native composer share fonts before runtime loading.
 
+const agentDockAppName =
+  APP_VARIANT === "development"
+    ? "AgentDock Dev"
+    : APP_VARIANT === "preview"
+      ? "AgentDock Preview"
+      : "AgentDock";
+const agentDockScheme =
+  APP_VARIANT === "development"
+    ? ["agentdock-dev", "t3code-dev"]
+    : APP_VARIANT === "preview"
+      ? ["agentdock-preview", "t3code-preview"]
+      : ["agentdock", "t3code"];
+const agentDockIcon = fromRepoRoot("assets/agentdock/agentdock-1024.png");
+
 const config: ExpoConfig = {
-  name: variant.appName,
+  name: isIosPersonalTeamBuild ? agentDockAppName : variant.appName,
   slug: "t3-code",
   platforms: ["ios", "android"],
-  scheme: variant.scheme,
-  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.3.0",
+  scheme: isIosPersonalTeamBuild ? agentDockScheme : variant.scheme,
+  version: repoEnv.T3CODE_MOBILE_VERSION ?? "0.1.43",
   runtimeVersion: {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
-    policy: runtimeVersionPolicy,
+    policy: isIosPersonalTeamBuild ? "appVersion" : runtimeVersionPolicy,
   },
   orientation: "portrait",
-  icon: variant.assets.appIcon,
+  icon: isIosPersonalTeamBuild ? agentDockIcon : variant.assets.appIcon,
   userInterfaceStyle: "automatic",
-  updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-    checkAutomatically: "ON_LOAD",
-    fallbackToCacheTimeout: 0,
-  },
+  ...(isIosPersonalTeamBuild || isLiteBuild
+    ? {}
+    : {
+        updates: {
+          enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+          url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+          checkAutomatically: "ON_LOAD" as const,
+          fallbackToCacheTimeout: 0,
+        },
+      }),
   ios: {
-    icon: variant.assets.iosIcon,
+    icon: isIosPersonalTeamBuild ? agentDockIcon : variant.assets.iosIcon,
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
     // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-      `applinks:${HOSTED_APP_HOST}`,
-    ],
-    entitlements: {
-      "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
-    },
+    ...(isIosPersonalTeamBuild
+      ? personalTeamAppleTeamId
+        ? { appleTeamId: personalTeamAppleTeamId }
+        : {}
+      : {
+          appleTeamId: "ARK85ZXQ4Z",
+          associatedDomains: [
+            `applinks:${variant.relyingParty}`,
+            `webcredentials:${variant.relyingParty}`,
+            `applinks:${HOSTED_APP_HOST}`,
+          ],
+          entitlements: {
+            "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
+          },
+        }),
     infoPlist: {
       UISupportedInterfaceOrientations: [
         "UIInterfaceOrientationPortrait",
@@ -276,10 +314,14 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
-      // System picture in picture needs background audio to start and survive outside the app.
-      UIBackgroundModes: ["audio"],
+        "Allow AgentDock to connect to AgentDock servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow AgentDock to save images to your photo library.",
+      ...(isIosPersonalTeamBuild || isLiteBuild
+        ? {}
+        : {
+            // System picture in picture needs background audio to start and survive outside the app.
+            UIBackgroundModes: ["audio"],
+          }),
       ITSAppUsesNonExemptEncryption: false,
       // Capture builds disable multitasking because iPadOS otherwise ignores orientation requests.
       ...(process.env.T3_SHOWCASE_CAPTURE_BUILD === "1"
@@ -354,17 +396,27 @@ const config: ExpoConfig = {
     "expo-sqlite",
     ...(isIosPersonalTeamBuild
       ? [sharingPlugin]
-      : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
-    [
-      "expo-notifications",
-      {
-        icon: variant.assets.androidNotificationIcon,
-        color: variant.assets.androidNotificationColor,
-        mode: APP_VARIANT === "development" ? "development" : "production",
-      },
-    ],
-    // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
-    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
+      : [
+          "./plugins/withShareExtensionDisplayName.cjs",
+          sharingPlugin,
+          [
+            "expo-notifications",
+            {
+              icon: variant.assets.androidNotificationIcon,
+              color: variant.assets.androidNotificationColor,
+              mode: APP_VARIANT === "development" ? "development" : "production",
+            },
+          ] as NonNullable<ExpoConfig["plugins"]>[number],
+        ]),
+    ...(isLiteBuild
+      ? []
+      : [
+          // Gate Clerk here: withoutIosPersonalTeamCapabilities runs too early to strip its entitlement.
+          [
+            "@clerk/expo",
+            { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild },
+          ] as NonNullable<ExpoConfig["plugins"]>[number],
+        ]),
     "expo-web-browser",
     [
       "expo-quick-actions",
@@ -438,11 +490,15 @@ const config: ExpoConfig = {
         },
         ios: {
           deploymentTarget: "18.0",
-          // AppCheckCore 11.3+ includes Swift and needs module maps for these Objective-C dependencies.
-          extraPods: [
-            { name: "GoogleUtilities", modular_headers: true },
-            { name: "RecaptchaInterop", modular_headers: true },
-          ],
+          ...(isLiteBuild
+            ? {}
+            : {
+                // AppCheckCore 11.3+ includes Swift and needs module maps for these Objective-C dependencies.
+                extraPods: [
+                  { name: "GoogleUtilities", modular_headers: true },
+                  { name: "RecaptchaInterop", modular_headers: true },
+                ],
+              }),
         },
       },
     ],
@@ -464,6 +520,7 @@ const config: ExpoConfig = {
   ],
   extra: {
     appVariant: APP_VARIANT,
+    liteBuild: isLiteBuild,
     secretsFeatureEnabled: ["1", "true"].includes(
       process.env.T3CODE_FEATURE_SECRETS?.trim().toLowerCase() ?? "",
     ),

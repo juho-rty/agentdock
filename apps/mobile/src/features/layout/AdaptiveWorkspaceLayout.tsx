@@ -55,7 +55,10 @@ import {
   nativeInspectorColumnWidth,
 } from "../../lib/layout";
 import type { ThreadListFilters } from "../../persistence/mobile-preferences";
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+import { withoutChatProjects } from "@t3tools/client-runtime/state/projects";
 import { appAtomRegistry } from "../../state/atom-registry";
+import { projectEnvironment } from "../../state/projects";
 import { useProjects } from "../../state/entities";
 import { environmentThreadShells } from "../../state/threads";
 import { withKnownPullRequestSummary } from "../../state/use-thread-pr";
@@ -618,20 +621,63 @@ function AdaptiveWorkspaceLayoutContent(
       appAtomRegistry.get(savedConnectionsByIdAtom)[listFilters.environmentId] !== undefined
         ? listFilters.environmentId
         : null;
-    const filteredScope = resolveHomeProjectFilterScope(
-      buildHomeProjectScopes({ projects, environmentId: listEnvironmentId, projectGroupingMode }),
-      projects,
-      { selectedProjectKey: listFilters?.projectKey ?? null, projectGroupingMode },
-    );
     const connectedEnvironmentIds = new Set(
       appAtomRegistry
         .get(workspaceConnections.environmentsAtom)
         .filter((environment) => environment.connectionState === "connected")
         .map((environment) => environment.environmentId),
     );
+    const openDraftIn = (project: { readonly environmentId: string; readonly id: string }) =>
+      handleSelectThreadRoute({
+        draft: {
+          requestId: uuidv4(),
+          environmentId: String(project.environmentId),
+          projectId: String(project.id),
+        },
+      });
+    if (listFilters?.mode === "chat") {
+      // A chat started from a chat stays on that computer; otherwise the first connected one hosts it.
+      const chatEnvironmentId =
+        [environmentId, ...connectedEnvironmentIds].find(
+          (candidate): candidate is EnvironmentId =>
+            candidate !== undefined && connectedEnvironmentIds.has(candidate as EnvironmentId),
+        ) ?? null;
+      if (chatEnvironmentId === null) {
+        handleSelectThreadRoute({ draft: { requestId: uuidv4() } });
+        return;
+      }
+      const chatProject = projects.find(
+        (project) => project.isChat === true && project.environmentId === chatEnvironmentId,
+      );
+      if (chatProject) {
+        openDraftIn(chatProject);
+        return;
+      }
+      // The computer makes its Chats project on first use.
+      void runAtomCommand(
+        appAtomRegistry,
+        projectEnvironment.openChat,
+        { environmentId: chatEnvironmentId, input: {} },
+        { label: projectEnvironment.openChat.label, reportFailure: true, reportDefect: true },
+      ).then((result) => {
+        if (result._tag === "Success") openDraftIn(result.value);
+      });
+      return;
+    }
+    const agentProjects = withoutChatProjects(projects);
+    const filteredScope = resolveHomeProjectFilterScope(
+      buildHomeProjectScopes({
+        projects: agentProjects,
+        environmentId: listEnvironmentId,
+        projectGroupingMode,
+      }),
+      agentProjects,
+      { selectedProjectKey: listFilters?.projectKey ?? null, projectGroupingMode },
+    );
     handleSelectThreadRoute(
       newTaskDestination({
-        projects,
+        // Agent starts project threads: a chat that is open or was used last picks nothing.
+        projects: agentProjects,
         requestId: uuidv4(),
         useLastProject: saved?.useLastProjectForNewThreads,
         currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,

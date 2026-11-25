@@ -109,6 +109,10 @@ import {
 import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
 import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { installAppUpdateChecks } from "./features/updates/app-updates";
+import { installMobileLinkedDevicePairing } from "./connection/linked-device-pairing";
+import { isMobileLiteBuild } from "./lib/liteMode";
+import { supportsAgentAwarenessPush } from "./features/agent-awareness/capabilities";
+import { installLocalThreadNotifications } from "./features/agent-awareness/localThreadNotifications";
 
 import "../global.css";
 
@@ -140,6 +144,8 @@ function getAppStateFromPath(path: string, options: Parameters<typeof getStateFr
 const appLinking = {
   prefixes: [
     Linking.createURL("/"),
+    "agentdock://",
+    "agentdock-dev://",
     "t3code://",
     "t3code-dev://",
     "t3code-preview://",
@@ -208,15 +214,21 @@ const appServiceDisposers = [
     pendingThreadIdsAtom: threadEnvironment.pendingThreadIdsAtom,
   }),
   installAppearanceRuntime(),
-  installSubscriptionUsageRefresh(),
+  ...(isMobileLiteBuild() ? [] : [installSubscriptionUsageRefresh()]),
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),
   installComposerAttachmentUploads(),
+  installMobileLinkedDevicePairing(),
   startIncomingShareInbox(),
   installAgentNotificationNavigation(linkToAppPath),
+  // Without T3 Connect push, the phone raises its own alerts from the live thread list.
+  ...(hasCloudPublicConfig() && supportsAgentAwarenessPush()
+    ? []
+    : [installLocalThreadNotifications(appAtomRegistry)]),
   installAppShortcuts(linkToAppPath),
-  installAppUpdateChecks(),
-  installShowcaseCapture(rootPathnameFromState),
+  ...(isMobileLiteBuild()
+    ? []
+    : [installAppUpdateChecks(), installShowcaseCapture(rootPathnameFromState)]),
 ];
 disposeOnFoundationReplace(typeof module === "undefined" ? undefined : module.hot, () => {
   for (const dispose of appServiceDisposers) dispose();
@@ -297,31 +309,38 @@ function AppContent() {
     ).setNavigationBarStyle(themeAppearance === "light");
   }, [themeAppearance]);
 
+  const liteBuild = isMobileLiteBuild();
+  const navigationContent = (
+    <NativeLayoutMetricsProvider>
+      <Navigation
+        ref={attachRootNavigation}
+        linking={appLinking}
+        onReady={handleNavigationReady}
+        theme={navigationTheme}
+        onStateChange={handleNavigationStateChange}
+      />
+      <Dialog.Host />
+      <ThreadArrangementHost />
+      <ProjectChipIconRasterizer />
+    </NativeLayoutMetricsProvider>
+  );
+
   return (
     <>
       <SplashScreenCoordinator />
       <QuickActionsLanguage />
-      <SubscriptionUsageCoordinator />
-      <ConnectDeviceApprovalCoordinator />
+      {liteBuild ? null : <SubscriptionUsageCoordinator />}
+      {liteBuild ? null : <ConnectDeviceApprovalCoordinator />}
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>
             <StatusBar barStyle={themeAppearance === "dark" ? "light-content" : "dark-content"} />
             {/* native-stack needs the theme's dark flag to select dark native headers. */}
-            <GlobalVoiceInputControl>
-              <NativeLayoutMetricsProvider>
-                <Navigation
-                  ref={attachRootNavigation}
-                  linking={appLinking}
-                  onReady={handleNavigationReady}
-                  theme={navigationTheme}
-                  onStateChange={handleNavigationStateChange}
-                />
-                <Dialog.Host />
-                <ThreadArrangementHost />
-                <ProjectChipIconRasterizer />
-              </NativeLayoutMetricsProvider>
-            </GlobalVoiceInputControl>
+            {liteBuild ? (
+              navigationContent
+            ) : (
+              <GlobalVoiceInputControl>{navigationContent}</GlobalVoiceInputControl>
+            )}
             <OverlayPortalHost />
           </SafeAreaProvider>
         </KeyboardProvider>

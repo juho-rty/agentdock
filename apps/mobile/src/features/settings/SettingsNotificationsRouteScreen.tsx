@@ -18,7 +18,6 @@ import { Linking, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { m as resolveMessage } from "../../i18n/messages";
 
-import { AppText as Text } from "../../components/ui/AppText";
 import {
   isAtomCommandInterrupted,
   reportAtomCommandResult,
@@ -118,23 +117,75 @@ function useNotificationsReady(): boolean {
 }
 
 export function SettingsNotificationsRouteScreen() {
-  const gt = useGT();
-  if (!hasCloudPublicConfig()) {
-    return (
-      <SettingsScreen title={gt("Notifications")}>
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerClassName="px-5 pt-4"
-        >
-          <Text className="text-base text-foreground-muted">
-            {gt("Notifications require {product} in this app build.", { product: "T3 Connect" })}
-          </Text>
-        </ScrollView>
-      </SettingsScreen>
-    );
-  }
+  if (!hasCloudPublicConfig()) return <LocalSettingsNotificationsRouteScreen />;
 
   return <ConfiguredSettingsNotificationsRouteScreen />;
+}
+
+/** Builds without T3 Connect: the phone posts its own alerts while it is open. */
+function LocalSettingsNotificationsRouteScreen() {
+  const gt = useGT();
+  const insets = useSafeAreaInsets();
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const notificationStatus = useAtomValue(notificationStatusAtom);
+  const setNotificationStatus = useAtomSet(notificationStatusAtom);
+  const wanted = AsyncResult.isSuccess(preferencesResult)
+    ? preferencesResult.value.threadNotificationsEnabled !== false
+    : true;
+
+  const handleChange = async (enabled: boolean) => {
+    savePreferences({ threadNotificationsEnabled: enabled });
+    if (!enabled || notificationStatus === "enabled") return;
+    const result = await settleAsyncResult(() =>
+      runtime.runPromiseExit(requestAgentNotificationPermission),
+    );
+    if (result._tag === "Success" && result.value.type === "granted") {
+      setNotificationStatus("enabled");
+      return;
+    }
+    setNotificationStatus("disabled");
+    Dialog.alert(
+      gt("Notifications disabled"),
+      gt("Notifications were denied for this app. Open Settings to enable them."),
+      [
+        { text: gt("Cancel"), style: "cancel" },
+        { text: gt("Open Settings"), onPress: () => void Linking.openSettings() },
+      ],
+    );
+  };
+
+  return (
+    <SettingsScreen title={gt("Notifications")}>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+      >
+        <SettingsSection title={gt("Agent activity")}>
+          <SettingsSwitchRow
+            icon="bell.badge"
+            label={gt("Thread notifications")}
+            subtitle={gt(
+              "When a thread on any computer finishes, fails, or needs an answer or approval. Arrives while the app is open or just closed.",
+            )}
+            disabled={notificationStatus === "checking" || notificationStatus === "unsupported"}
+            value={wanted && notificationStatus === "enabled"}
+            onValueChange={(enabled) => void handleChange(enabled)}
+          />
+          {wanted && notificationStatus === "disabled" ? (
+            <SettingsRow
+              icon="link"
+              label={gt("Open Settings")}
+              onPress={() => void Linking.openSettings()}
+            />
+          ) : null}
+        </SettingsSection>
+      </ScrollView>
+    </SettingsScreen>
+  );
 }
 
 function ConfiguredSettingsNotificationsRouteScreen() {

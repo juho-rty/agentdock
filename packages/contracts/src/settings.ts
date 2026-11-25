@@ -1395,10 +1395,6 @@ export const ServerSettings = Schema.Struct({
   requireConnectDeviceApproval: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
-  /** Runs a Cloudflare quick tunnel and registers it with the phone relay Worker. */
-  phoneAccessEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** The phone relay Worker; empty means the built-in AgentDock relay. */
-  phoneRelayUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
@@ -1862,8 +1858,6 @@ export const ServerSettingsPatch = Schema.Struct({
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   requireConnectDeviceApproval: Schema.optionalKey(Schema.Boolean),
-  phoneAccessEnabled: Schema.optionalKey(Schema.Boolean),
-  phoneRelayUrl: Schema.optionalKey(TrimmedString),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({
@@ -2013,12 +2007,7 @@ export function requiredScopesForServerSettingsPatch(
   let changesAccess = false;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    // Phone access opens this server to the internet, so it is access authority too.
-    if (
-      key === "requireConnectDeviceApproval" ||
-      key === "phoneAccessEnabled" ||
-      key === "phoneRelayUrl"
-    ) {
+    if (key === "requireConnectDeviceApproval") {
       changesAccess = true;
     } else if (
       key === "providers" ||
