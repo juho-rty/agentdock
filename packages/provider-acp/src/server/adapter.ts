@@ -184,6 +184,7 @@ const ACP_TEXT_FLUSH_INTERVAL: Duration.Input = "50 millis";
 const ACP_SUBAGENT_TEXT_FLUSH_INTERVAL: Duration.Input = "400 millis";
 
 // Output of the running prompt. Session metadata and unknown updates do not reset its timeout.
+const ACP_PROMPT_RETRY_POLL = Duration.seconds(15);
 const ACP_PROMPT_ACTIVITY_UPDATES: ReadonlySet<string> = new Set([
   "agent_message",
   "agent_message_chunk",
@@ -366,6 +367,14 @@ export interface AcpAdapterV2Flavor {
   ) => Effect.Effect<
     (result: EffectAcpSchema.PromptResponse) => Effect.Effect<AcpPromptOutcomeFailure | undefined>
   >;
+  /**
+   * Runs before `session/prompt`. The returned poll reports a model-request retry the
+   * agent made on its own since the last poll, for agents that retry without a word over
+   * ACP. A reported retry shows as a provider retry and counts as prompt progress.
+   */
+  readonly watchPromptRetries?: (
+    sessionId: string,
+  ) => Effect.Effect<Effect.Effect<OrchestrationV2ProviderFailure | undefined>>;
   readonly requiresSignIn?: (cause: unknown) => boolean;
   /**
    * Runs before attachment paths, T3 instructions and native slash-command detection,
@@ -1557,6 +1566,7 @@ interface ActiveAcpTurn {
   /** Clock millis of the prompt's last progress, for `promptInactivityTimeout`. */
   lastProgressAt: number;
   inactivityWatchdog: Fiber.Fiber<void> | undefined;
+  retryWatch: Fiber.Fiber<void> | undefined;
   /** True after an assistant reply until another thought or tool update arrives. */
   assistantRespondedSinceLastWork: boolean;
 }
@@ -2785,6 +2795,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             (yield* Ref.get(stoppedRunQuarantine))
           )
             return;
+          // The agent is still working on the prompt, so the inactivity watchdog waits.
+          context.lastProgressAt = yield* Clock.currentTimeMillis;
           const previous = context.providerRetry;
           context.providerRetry = {
             failure: notice.failure,
@@ -8205,6 +8217,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (watchdog !== undefined) {
             yield* Fiber.interrupt(watchdog).pipe(Effect.forkDetach, Effect.asVoid);
           }
+          const retryWatch = context.retryWatch;
+          context.retryWatch = undefined;
+          if (retryWatch !== undefined) {
+            yield* Fiber.interrupt(retryWatch).pipe(Effect.forkDetach, Effect.asVoid);
+          }
           const directStopQuarantine = yield* Ref.get(stoppedRunQuarantine);
           if (flavor.subagentsIdleOnTurnCompletion === true) {
             for (const subagent of context.subagents.values()) {
@@ -8547,6 +8564,25 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               retireInactivePrompt(context, generation, timeoutMillis),
             );
             if (outcome !== "rearm") return;
+          }
+        });
+
+        const watchPromptRetries = Effect.fn("AcpAdapterV2.watchPromptRetries")(function* (
+          context: ActiveAcpTurn,
+          generation: number,
+          poll: Effect.Effect<OrchestrationV2ProviderFailure | undefined>,
+        ) {
+          yield* Deferred.await(context.promptDispatched);
+          while (true) {
+            yield* Effect.sleep(ACP_PROMPT_RETRY_POLL);
+            if (context.finalized || context.interrupted) return;
+            if (yield* Deferred.isDone(context.promptWireSettled)) return;
+            const failure = yield* poll;
+            if (failure === undefined) continue;
+            yield* runRuntimeCallbackAtGeneration(
+              generation,
+              reportProviderRetry({ sessionId: context.nativeThreadId, failure }),
+            );
           }
         });
 
@@ -8897,6 +8933,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               nativePromptId: undefined,
               lastProgressAt: 0,
               inactivityWatchdog: undefined,
+              retryWatch: undefined,
               assistantRespondedSinceLastWork: false,
             };
             const carryover = yield* Ref.getAndSet(carryoverSubagents, null);
@@ -9058,6 +9095,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 context,
                 promptGeneration,
                 promptInactivityTimeoutMillis,
+              ).pipe(Effect.forkIn(sessionScope));
+            }
+            if (flavor.watchPromptRetries !== undefined) {
+              context.retryWatch = yield* watchPromptRetries(
+                context,
+                promptGeneration,
+                yield* flavor.watchPromptRetries(requestedSessionId),
               ).pipe(Effect.forkIn(sessionScope));
             }
             const compactSession = isCompactionMessage(turnInput.message)

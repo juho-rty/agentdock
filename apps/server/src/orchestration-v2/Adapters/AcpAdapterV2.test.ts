@@ -31,6 +31,7 @@ import {
   type OrchestrationV2UserInputQuestion,
   type ProviderOptionDescriptor,
   type ProviderUserInputAnswers,
+  type OrchestrationV2ProviderFailure,
 } from "@t3tools/contracts";
 import { GrokSettings } from "@t3tools/provider-grok/settings";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -75,6 +76,7 @@ import {
   normalizeXAiAcpToolCallState,
   registerXAiBackgroundTaskTracking,
 } from "@t3tools/provider-grok/testing";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { makeTurnInput } from "./AcpAdapterV2.testkit.ts";
@@ -614,6 +616,7 @@ const makePromptInactivityHarness = Effect.fnUntraced(function* (input: {
   ) => AcpSessionRuntime.AcpSessionRuntime["Service"]["prompt"];
   readonly cancelled?: Deferred.Deferred<void>;
   readonly followAgentWorkState?: boolean;
+  readonly pollPromptRetry?: Effect.Effect<OrchestrationV2ProviderFailure | undefined>;
 }) {
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const natives: Array<AcpSessionRuntime.AcpSessionRuntime["Service"]> = [];
@@ -624,6 +627,9 @@ const makePromptInactivityHarness = Effect.fnUntraced(function* (input: {
       driver: ACP_TEST_DRIVER,
       capabilities: AcpProviderCapabilitiesV2,
       promptInactivityTimeout: "15 minutes",
+      ...(input.pollPromptRetry === undefined
+        ? {}
+        : { watchPromptRetries: () => Effect.succeed(input.pollPromptRetry!) }),
       ...(input.followAgentWorkState === true ? { followAgentWorkState: true } : {}),
       makeRuntime: makeMockRuntime({
         childProcessSpawner,
@@ -5295,6 +5301,46 @@ describe("AcpAdapterV2", () => {
       assert.include(silent?.failure?.message, "15 minutes");
       assert.equal(next?.status, "completed");
       assert.lengthOf(harness.natives, 2);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("keeps a silent prompt open while its agent reports its own retries", () =>
+    Effect.gen(function* () {
+      let retrying = true;
+      const harness = yield* makePromptInactivityHarness({
+        environment: (runtimeOrdinal) =>
+          runtimeOrdinal === 1 ? { T3_ACP_HANG_PROMPT_FOREVER: "1" } : {},
+        pollPromptRetry: Effect.sync(() =>
+          retrying
+            ? makeProviderFailure({
+                class: "provider_error",
+                message: "No capacity. The agent is retrying.",
+                retryable: true,
+              })
+            : undefined,
+        ),
+      });
+      const retryItems = yield* harness.runtime.events.pipe(
+        Stream.filter(
+          (event) => event.type === "turn_item.updated" && event.turnItem.type === "error",
+        ),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* harness.startTurn(1);
+      yield* TestClock.adjust("1 hour");
+      assert.isTrue(yield* harness.nextTurnRejected(2));
+      const [retryItem] = Array.from(yield* Fiber.join(retryItems));
+      assert.equal(retryItem?.type === "turn_item.updated" && retryItem.turnItem.status, "running");
+
+      // Once the agent stops retrying and stays silent, the timeout applies again.
+      retrying = false;
+      yield* TestClock.adjust("15 minutes");
+      yield* harness.startTurn(2);
+      const [silent, next] = yield* harness.terminals(2);
+      assert.equal(silent?.status, "failed");
+      assert.equal(next?.status, "completed");
     }).pipe(Effect.provide(layerTest)),
   );
 

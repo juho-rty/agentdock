@@ -33,6 +33,7 @@ import {
   describeAntigravitySubagentLaunches,
 } from "../../provider/acp/AntigravityChildWork.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
+import { watchAntigravityPromptRetries } from "../../provider/acp/AntigravityRetryLog.ts";
 import { watchAntigravityPromptOutcome } from "../../provider/acp/AntigravityTurnOutcome.ts";
 import {
   antigravityApprovalOptions,
@@ -303,6 +304,9 @@ export function makeAntigravityAcpAdapterFlavor(
       : {
           watchPromptOutcome: (sessionId: string) =>
             watchAntigravityPromptOutcome(profileDirectory, sessionId),
+          // Antigravity retries a failed model request silently; each attempt can idle 10 minutes.
+          watchPromptRetries: (sessionId: string) =>
+            watchAntigravityPromptRetries(profileDirectory, sessionId),
         }),
   };
 }
