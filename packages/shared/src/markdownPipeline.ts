@@ -17,6 +17,7 @@ import { find, html } from "property-information";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
 import { remarkGithubAlerts } from "./markdownGithubAlerts.ts";
 import { remarkNormalizeListItemIndentation } from "./markdownListIndentation.ts";
@@ -250,6 +251,8 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
 
 export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkGfm,
+  // Lets `**` close before Korean and other CJK text, as in "**`4턴`(…)**으로".
+  remarkCjkFriendly,
   remarkEndAutolinksAtScriptPunctuation,
   remarkKeepAutolinkSuffixes,
   remarkLinkAbsoluteFilePaths,
@@ -266,6 +269,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
 // Leading whitespace is kept only where each line renders as a line.
 export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkGfm,
+  remarkCjkFriendly,
   remarkEndAutolinksAtScriptPunctuation,
   remarkKeepAutolinkSuffixes,
   remarkKeepLeadingWhitespace,
