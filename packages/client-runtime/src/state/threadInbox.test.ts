@@ -306,6 +306,12 @@ describe("prioritizeAttentionThreads", () => {
     expect(resolveThreadAttentionPriority(unreadDone)).toBe(1);
     expect(resolveThreadAttentionPriority(workingNow)).toBe(2);
     expect(resolveThreadAttentionPriority(needsApproval)).toBe(3);
+    expect(
+      resolveThreadAttentionPriority({
+        ...readIdle,
+        pendingBackgroundTasks: [{ kind: "delegate", awaited: true }] as never,
+      }),
+    ).toBe(2);
 
     expect(
       prioritizeAttentionThreads([readIdle, unreadDone, workingNow, needsApproval]).map(

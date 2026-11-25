@@ -1,5 +1,6 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models.ts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { toSortableTimestamp } from "./threadSort.ts";
 import { effectiveSnoozed, hasUnseenRunFailure } from "./threadSettled.ts";
 
@@ -112,6 +113,7 @@ export type ThreadAttentionPriorityInput = Pick<
   readonly lastVisitedAt?: string | null | undefined;
   readonly unsettledAt?: string | null | undefined;
   readonly latestUserAuthoredMessageAt?: string | null | undefined;
+  readonly pendingBackgroundTasks?: EnvironmentThreadShell["pendingBackgroundTasks"] | undefined;
 };
 
 function hasUnreadDoneRun(thread: ThreadAttentionPriorityInput): boolean {
@@ -161,6 +163,10 @@ export function resolveThreadAttentionPriority(
     thread.runtime !== null &&
     ["preparing", "queued", "starting", "running", "waiting"].includes(thread.runtime.status)
   ) {
+    return 2;
+  }
+  // Waiting on background work (a build, a delegate) is still in progress, not done.
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) {
     return 2;
   }
   if (hasUnreadDoneRun(thread)) {

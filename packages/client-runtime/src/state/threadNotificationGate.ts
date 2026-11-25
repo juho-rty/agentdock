@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off globalTimers:off - The gate runs in web and native atom subscriptions, outside an Effect runtime.
 import { effectiveSnoozed, type ThreadSnoozeShell } from "./threadSettled.ts";
 
 export type ThreadNotificationKind = "input" | "completion";
