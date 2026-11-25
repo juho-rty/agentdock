@@ -44,7 +44,14 @@ import {
 } from "./routes.ts";
 
 const RETRY_BASE_DELAY_MS = 1_000;
-const RETRY_MAX_DELAY_MS = 300_000;
+// Phones lose their VPN or relay path for a minute at a time (Tailscale on
+// cellular, a suspended network extension). A five-minute ceiling left the app
+// showing "disconnected" long after the path came back, so retries stay at
+// most 20 seconds apart. A failed attempt is one small request per route.
+const RETRY_MAX_DELAY_MS = 20_000;
+// A device whose approval request expired has nobody approving it; it keeps
+// the long ceiling so a forgotten device does not knock every 20 seconds.
+const APPROVAL_EXPIRED_MAX_DELAY_MS = 300_000;
 const SESSION_LOSS_RETRY_DELAY_MS = 250;
 // Someone is approving this device on the host; check back soon rather than climbing the ladder.
 const APPROVAL_PENDING_RETRY_DELAY_MS = 4_000;
@@ -167,8 +174,12 @@ export interface EnvironmentSupervisorOptions {
   }) => Effect.Effect<Option.Option<ConnectionCatalogEntry>>;
 }
 
-function retryDelayMs(failureCount: number, random: number): number {
-  const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
+function retryDelayMs(
+  failureCount: number,
+  random: number,
+  maxDelayMs: number = RETRY_MAX_DELAY_MS,
+): number {
+  const ceiling = Math.min(maxDelayMs, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
@@ -1299,7 +1310,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           : error.reason === "approval-pending"
             ? Math.max(
                 APPROVAL_PENDING_RETRY_DELAY_MS,
-                retryDelayMs(backoffFailures - 1, yield* Random.next),
+                retryDelayMs(
+                  backoffFailures - 1,
+                  yield* Random.next,
+                  APPROVAL_EXPIRED_MAX_DELAY_MS,
+                ),
               )
             : retryDelayMs(backoffFailures - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
