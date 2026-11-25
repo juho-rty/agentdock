@@ -129,6 +129,32 @@ export function useComposerAttachmentActions(props: {
       }
     });
   };
+  // Photos taken in the composer's camera panel arrive as local file URIs.
+  const onCaptureDraftPhoto = async (uri: string) => {
+    const key = props.draftKey;
+    if (!key || props.locked) return;
+    const insertion = captureComposerDraftInsertion(key);
+    await withDraftOperation(key, async (signal) => {
+      try {
+        const result = await convertPastedImagesToAttachments({
+          uris: [uri],
+          existingCount: countComposerDraftAttachmentsAfterSelection(key, insertion),
+          namePrefix: "photo",
+        });
+        const rejected =
+          result.attachments.length > 0
+            ? await append(key, signal, result.attachments, insertion)
+            : 0;
+        const full = result.attachments.length === 0 && result.error === null ? 1 : rejected;
+        report(m(msg("Could not attach photo")), result.error, full);
+      } catch (error) {
+        Dialog.alert(
+          m(msg("Could not attach photo")),
+          errorDisplayMessage(error, m) ?? m(msg("Try again.")),
+        );
+      }
+    });
+  };
   const onNativePasteText = async (paste: ComposerTextPaste) => {
     const key = props.draftKey;
     if (!key || props.locked) return;
@@ -160,5 +186,11 @@ export function useComposerAttachmentActions(props: {
       }
     });
   };
-  return { onPickDraftMedia, onPickDraftFiles, onNativePasteImages, onNativePasteText };
+  return {
+    onPickDraftMedia,
+    onPickDraftFiles,
+    onCaptureDraftPhoto,
+    onNativePasteImages,
+    onNativePasteText,
+  };
 }

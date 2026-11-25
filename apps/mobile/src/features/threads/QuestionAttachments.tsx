@@ -10,7 +10,7 @@ import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS, type UserInputQuestion } from "@t3t
 import { useAtomValue } from "@effect/atom-react";
 import { View, type TextInputInstance } from "react-native";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
+import { AttachmentMenuButton } from "./AttachmentMenuButton";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { pickComposerFiles, pickComposerMedia } from "../../lib/composerImages";
 import { useThreadSelection } from "../../state/use-thread-selection";
@@ -178,7 +178,7 @@ export function QuestionAttachments(props: {
   return (
     <View className="gap-2">
       {canAttach ? (
-        <ComposerAttachmentButton
+        <AttachmentMenuButton
           disabled={props.disabled}
           supportsFiles
           onPickMedia={() => pick("media")}

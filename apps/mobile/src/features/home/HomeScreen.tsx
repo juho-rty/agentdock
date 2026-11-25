@@ -101,6 +101,7 @@ import {
 import { createSwipeRowActivation } from "./swipe-row-activation";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
 import { useFabScroll } from "./FabScrollContext";
+import { ThreadModeSlide, useThreadModeSlide } from "./ThreadModeSlide";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
@@ -466,7 +467,11 @@ export function HomeScreen(props: HomeScreenProps) {
     if (swipeEnabled) activateVisibleRows(threadListV2Items);
   }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
 
-  const renderV2Item = ({ item }: { readonly item: ThreadListV2ListItem }) => {
+  const { progress: modeSlide, slideTo: slideToMode } = useThreadModeSlide();
+  const renderV2Item = (info: { readonly item: ThreadListV2ListItem }) => (
+    <ThreadModeSlide progress={modeSlide}>{renderV2ItemContent(info)}</ThreadModeSlide>
+  );
+  const renderV2ItemContent = ({ item }: { readonly item: ThreadListV2ListItem }) => {
     if (item.type === "v2-pending") {
       const pendingScopeKey = scopedProjectKey(
         item.pendingTask.environmentId,
@@ -710,7 +715,10 @@ export function HomeScreen(props: HomeScreenProps) {
           onEnvironmentChange={props.onEnvironmentChange}
           onProjectChange={props.onProjectChange}
           threadMode={props.threadMode}
-          onThreadModeChange={props.onThreadModeChange}
+          onThreadModeChange={(mode) => {
+            if (mode !== props.threadMode) slideToMode(mode);
+            props.onThreadModeChange(mode);
+          }}
         />
       ) : null}
     </>
@@ -738,11 +746,13 @@ export function HomeScreen(props: HomeScreenProps) {
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : props.threadMode === "chat" ? (
-      <EmptyState
-        title={gt("No chats yet")}
-        detail={gt("Start a chat to ask something without a project or tools.")}
-        variant={Platform.OS === "android" ? "plain" : undefined}
-      />
+      <ThreadModeSlide progress={modeSlide}>
+        <EmptyState
+          title={gt("No chats yet")}
+          detail={gt("Start a chat to ask something without a project or tools.")}
+          variant={Platform.OS === "android" ? "plain" : undefined}
+        />
+      </ThreadModeSlide>
     ) : v2ScopedProjectGroup !== null ? (
       <EmptyState
         title={gt("No threads in {name}", { name: v2ScopedProjectGroup.title })}

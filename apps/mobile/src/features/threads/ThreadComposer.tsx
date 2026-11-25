@@ -59,6 +59,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
+import { ComposerCameraPanel } from "./ComposerCameraPanel";
 import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
@@ -175,6 +176,7 @@ export interface ThreadComposerProps {
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftMedia: () => Promise<void>;
+  readonly onCaptureDraftPhoto: (uri: string) => Promise<void>;
   readonly onPickDraftFiles: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<boolean>;
   readonly onNativePasteText: (paste: ComposerTextPaste) => Promise<void>;
@@ -267,6 +269,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const fallbackInputRef = useRef<ComposerEditorHandle>(null);
   const inputRef = props.editorRef ?? fallbackInputRef;
   const [isFocused, setIsFocused] = useState(false);
+  const [cameraPanelOpen, setCameraPanelOpen] = useState(false);
   const pendingPastedTextAttachmentCountRef = useRef(0);
   const pendingNativeImagePasteCountRef = useRef(0);
   const [pendingPastedTextAttachmentCount, setPendingPastedTextAttachmentCount] = useState(0);
@@ -536,6 +539,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const onEditorFocusChange = props.onEditorFocusChange;
   const handleFocus = () => {
     setIsFocused(true);
+    setCameraPanelOpen(false);
     settingsSheetPresentation.onEditorFocusChange(true);
     onEditorFocusChange?.(true);
   };
@@ -817,9 +821,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               <ComposerAttachmentButton
                 size={usesLargeControls ? "large" : "regular"}
                 disabled={isSubmissionLocked}
-                supportsFiles={props.serverConfig !== null}
-                onPickMedia={props.onPickDraftMedia}
-                onPickFiles={props.onPickDraftFiles}
+                open={cameraPanelOpen}
+                onPress={() => {
+                  if (!cameraPanelOpen) {
+                    inputRef.current?.blur();
+                    Keyboard.dismiss();
+                  }
+                  setCameraPanelOpen((open) => !open);
+                }}
               />
               <Animated.View
                 className="min-w-0 flex-1"
@@ -1116,6 +1125,15 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             </ComposerDictationToolbar>
           </Animated.View>
         </ComposerSurface>
+        {cameraPanelOpen && !isSubmissionLocked ? (
+          <ComposerCameraPanel
+            supportsFiles={props.serverConfig !== null}
+            onCapture={props.onCaptureDraftPhoto}
+            onPickMedia={props.onPickDraftMedia}
+            onPickFiles={props.onPickDraftFiles}
+            onClose={() => setCameraPanelOpen(false)}
+          />
+        ) : null}
 
         {props.connectionState === "connected" && operateDenied ? (
           <Text className="pt-2 text-xs text-foreground-muted">

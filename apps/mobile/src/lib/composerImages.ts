@@ -604,6 +604,8 @@ function isOwnedPastedImageUri(uri: string): boolean {
 export async function convertPastedImagesToAttachments(input: {
   readonly uris: ReadonlyArray<string>;
   readonly existingCount?: number;
+  /** File name stem for the attachments, e.g. "photo" for camera captures. */
+  readonly namePrefix?: string;
 }): Promise<{
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
   readonly error: string | null;
@@ -658,7 +660,7 @@ export async function convertPastedImagesToAttachments(input: {
       attachments.push({
         id: uuidv4(),
         type: "image",
-        name: `pasted-image.${mimeType.split("/")[1] ?? "png"}`,
+        name: `${input.namePrefix ?? "pasted-image"}.${mimeType.split("/")[1] ?? "png"}`,
         mimeType,
         sizeBytes,
         dataUrl,
