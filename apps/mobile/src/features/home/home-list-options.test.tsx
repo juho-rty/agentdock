@@ -16,8 +16,9 @@ import { HomeListOptionsProvider, useHomeListOptions } from "./home-list-options
 const ENVIRONMENT = "env-1" as EnvironmentId;
 const AVAILABLE = new Set([ENVIRONMENT]);
 
-it("saves the scope from every update made in one event", async () => {
+it("saves the scope from every update made in one event, once, after the switch", async () => {
   harness.saved = [];
+  vi.useFakeTimers();
   let controls: ReturnType<typeof useHomeListOptions> | undefined;
   function Probe() {
     const result = useHomeListOptions(AVAILABLE);
@@ -40,6 +41,9 @@ it("saves the scope from every update made in one event", async () => {
     controls!.setSelectedProjectKey("env-1:project-1");
   });
 
+  expect(harness.saved).toEqual([]);
+  vi.runAllTimers();
+  expect(harness.saved).toHaveLength(1);
   expect(harness.saved.at(-1)).toEqual({
     threadListFilters: {
       environmentId: ENVIRONMENT,
@@ -51,4 +55,5 @@ it("saves the scope from every update made in one event", async () => {
   expect(controls!.options.selectedEnvironmentId).toBe(ENVIRONMENT);
   expect(controls!.options.selectedProjectKey).toBe("env-1:project-1");
   act(() => root.unmount());
+  vi.useRealTimers();
 });

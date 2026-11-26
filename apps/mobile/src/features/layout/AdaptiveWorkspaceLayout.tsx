@@ -42,7 +42,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { AsyncResult } from "effect/reactivity";
+import { Atom, AsyncResult } from "effect/reactivity";
 
 import {
   deriveFileInspectorPaneLayout,
@@ -225,27 +225,41 @@ function useStableActions(actions: Required<AdaptiveWorkspaceActions>): Adaptive
   return stable;
 }
 
+// Only the load state and grouping mode re-render the workspace. Watching the whole preferences
+// value re-rendered every screen on each save, so switching Agent/Chat (which saves the list
+// filters) lagged. The saved filters only seed the home list once, so they are read, not watched.
+const workspacePreferencesKeyAtom = Atom.map(mobilePreferencesAtom, (result) =>
+  AsyncResult.isSuccess(result)
+    ? resolveMobileProjectGroupingSettings(result.value).sidebarProjectGroupingMode
+    : AsyncResult.isFailure(result)
+      ? "failure"
+      : "loading",
+);
+
 export function AdaptiveWorkspaceLayout(props: {
   readonly children: ReactNode;
   readonly pathname: string;
   readonly workspaceRouteKey: string | undefined;
   readonly workspaceRouteName: string | undefined;
 }) {
-  const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  if (!AsyncResult.isSuccess(preferencesResult)) {
-    return AsyncResult.isFailure(preferencesResult) ? (
+  const preferencesKey = useAtomValue(workspacePreferencesKeyAtom);
+  if (preferencesKey === "loading") return null;
+  if (preferencesKey === "failure") {
+    return (
       <AdaptiveWorkspaceLayoutContent
         {...props}
         projectGroupingMode={DEFAULT_MOBILE_PROJECT_GROUPING_SETTINGS.sidebarProjectGroupingMode}
       />
-    ) : null;
+    );
   }
-  const groupingSettings = resolveMobileProjectGroupingSettings(preferencesResult.value);
+  const preferences = appAtomRegistry.get(mobilePreferencesAtom);
   return (
     <AdaptiveWorkspaceLayoutContent
       {...props}
-      projectGroupingMode={groupingSettings.sidebarProjectGroupingMode}
-      savedThreadListFilters={preferencesResult.value.threadListFilters}
+      projectGroupingMode={preferencesKey}
+      savedThreadListFilters={
+        AsyncResult.isSuccess(preferences) ? preferences.value.threadListFilters : undefined
+      }
     />
   );
 }

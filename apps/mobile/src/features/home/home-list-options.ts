@@ -43,6 +43,10 @@ interface HomeListOptionsContextValue {
   readonly projectGroupingMode: SidebarProjectGroupingMode;
 }
 
+const FILTER_SAVE_DELAY_MS = 600;
+// One pending filter save per provider (keyed by its options atom).
+const pendingFilterSaves = new WeakMap<object, ReturnType<typeof setTimeout>>();
+
 const HomeListOptionsContext = createContext<HomeListOptionsContextValue | null>(null);
 
 export function HomeListOptionsProvider({
@@ -69,14 +73,23 @@ export function HomeListOptionsProvider({
       next.threadMode !== current.threadMode ||
       next.threadSortOrder !== current.threadSortOrder
     ) {
-      savePreferences({
-        threadListFilters: {
-          environmentId: next.selectedEnvironmentId,
-          projectKey: next.selectedProjectKey,
-          mode: next.threadMode,
-          sort: next.threadSortOrder,
-        },
-      });
+      // Saving re-renders every preferences reader, so it waits until the switched list has
+      // painted (and folds quick back-and-forth taps into one write).
+      clearTimeout(pendingFilterSaves.get(optionsAtom));
+      pendingFilterSaves.set(
+        optionsAtom,
+        setTimeout(() => {
+          const latest = registry.get(optionsAtom);
+          savePreferences({
+            threadListFilters: {
+              environmentId: latest.selectedEnvironmentId,
+              projectKey: latest.selectedProjectKey,
+              mode: latest.threadMode,
+              sort: latest.threadSortOrder,
+            },
+          });
+        }, FILTER_SAVE_DELAY_MS),
+      );
     }
   };
   const value = { options, updateOptions, projectGroupingMode };
