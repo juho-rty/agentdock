@@ -96,28 +96,27 @@ import {
   buildHomeProjectScopes,
   findHomeProjectScope,
   type HomeProjectSortOrder,
-  sortHomeProjectScopes,
 } from "./homeThreadList";
 import { createSwipeRowActivation } from "./swipe-row-activation";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
 import { useFabScroll } from "./FabScrollContext";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
-import { ThreadListFilters } from "./ThreadListFilters";
-import { HomeIosOtaBanner } from "./HomeIosOtaBanner";
 import { deriveHomeEmptyState } from "./home-empty-state";
 import type { HomeThreadSortOrder } from "./home-list-options";
 
 interface HomeScreenProps {
   /** Whether this list is the one on screen; see `useHomeRouteVisible`. */
   readonly visible: boolean;
+  /** Whether this mode's page is the one the Agent | Chat pager shows. */
+  readonly active: boolean;
+  /** Height of the pinned mode/filter bar the route lays over the list (iOS). */
+  readonly pinnedFiltersHeight: number;
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
   readonly threadMode: ThreadListMode;
-  readonly onThreadModeChange: (mode: ThreadListMode) => void;
   readonly threadSortOrder: HomeThreadSortOrder;
-  readonly onThreadSortOrderChange: (sortOrder: HomeThreadSortOrder) => void;
   /** Keeps the list, and so the Agent | Chat switch, on screen while this mode is empty. */
   readonly hasThreadsOutsideMode: boolean;
   readonly catalogState: WorkspaceState;
@@ -131,8 +130,6 @@ interface HomeScreenProps {
   readonly projectSortOrder: HomeProjectSortOrder;
   readonly projectGroupingMode: SidebarProjectGroupingMode;
   readonly onSearchQueryChange: (query: string) => void;
-  readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
-  readonly onProjectChange: (projectKey: string | null) => void;
   readonly onAddConnection: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;
@@ -165,6 +162,12 @@ interface HomeScreenProps {
 }
 
 const ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT = 72;
+const NO_SHORTCUT_ITEMS: ReadonlyArray<ThreadListV2ListItem> = [];
+
+/** iOS pins the Agent | Chat and filter bar over the list, under the nav bar. */
+export function homePinsFilters(workspace: ReturnType<typeof useWorkspaceTabs>): boolean {
+  return Platform.OS === "ios" && workspace !== undefined && workspace !== null;
+}
 // Rows away from the viewport skip their swipe actions (see
 // swipe-row-activation), so render further ahead: a fast fling then reaches
 // rows that are already built instead of rows still being rebuilt.
@@ -226,9 +229,8 @@ export function HomeScreen(props: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const contentTopInset = useContentTopInset();
   // iOS pins the mode/filter bar under the nav bar; rows scroll beneath it.
-  const pinsFilters = Platform.OS === "ios" && workspace !== undefined && workspace !== null;
-  const [pinnedFiltersHeight, setPinnedFiltersHeight] = useState(0);
-  const listTopInset = contentTopInset + (pinsFilters ? pinnedFiltersHeight : 0);
+  const pinsFilters = homePinsFilters(workspace);
+  const listTopInset = contentTopInset + (pinsFilters ? props.pinnedFiltersHeight : 0);
   const emptyTopInset = useWorkspaceListEmptyTopInset();
   const { fabClearance } = useAndroidControlSizing();
   const screenMetrics = useNativeLayoutMetrics();
@@ -469,27 +471,12 @@ export function HomeScreen(props: HomeScreenProps) {
     }
     onSelectThread(thread);
   };
-  useThreadJumpShortcuts(threadListV2Items, selectThread);
+  useThreadJumpShortcuts(props.active ? threadListV2Items : NO_SHORTCUT_ITEMS, selectThread);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the list's visible range after commit to enable swipe gestures on those rows
   useEffect(() => {
     if (swipeEnabled) activateVisibleRows(threadListV2Items);
   }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
 
-  // Agent/Chat swaps the rows in place: row layout animation pauses across the switch so it
-  // does not look like the list reloading.
-  const [modeSwitching, setModeSwitching] = useState(false);
-  const modeSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the mode switch timer on unmount
-  useEffect(() => () => clearTimeout(modeSwitchTimerRef.current), []);
-  const changeThreadMode = (mode: ThreadListMode) => {
-    if (mode !== props.threadMode) {
-      setModeSwitching(true);
-      clearTimeout(modeSwitchTimerRef.current);
-      modeSwitchTimerRef.current = setTimeout(() => setModeSwitching(false), 400);
-    }
-    props.onThreadModeChange(mode);
-  };
-  const rowLayoutAnimation = modeSwitching ? undefined : THREAD_LIST_ROW_LAYOUT;
   const renderV2Item = ({ item }: { readonly item: ThreadListV2ListItem }) => {
     if (item.type === "v2-pending") {
       const pendingScopeKey = scopedProjectKey(
@@ -651,7 +638,8 @@ export function HomeScreen(props: HomeScreenProps) {
     props.hasThreadsOutsideMode ||
     (props.threadMode === "chat" && props.catalogState.hasLoadedShellSnapshot);
   // A hidden list gets no layout, so it never reports its rows as laid out.
-  const hasRowsToLayOut = props.visible && hasAnyThreads && threadListV2Items.length > 0;
+  const hasRowsToLayOut =
+    props.visible && props.active && hasAnyThreads && threadListV2Items.length > 0;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the native launch splash, which is outside React, until the rows are gone or this list unmounts; a layout effect runs before the splash hides in this commit
   useLayoutEffect(() => {
     return hasRowsToLayOut ? holdLaunchSplashForHomeRows() : undefined;
@@ -712,52 +700,6 @@ export function HomeScreen(props: HomeScreenProps) {
   }
 
   const listHeader = Platform.OS === "ios" ? undefined : <HomeTopContentSpacer />;
-
-  const listGutter = sidebarSurface ? 8 : 0;
-  const pinnedFilters = pinsFilters ? (
-    <View
-      className={contentBackground}
-      // Opaque from the screen top, so rows scrolling up stay hidden behind the nav bar too.
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        paddingTop: contentTopInset,
-        paddingLeft: (contentSideInsets?.left ?? 0) + listGutter,
-        paddingRight: (contentSideInsets?.right ?? 0) + listGutter,
-        zIndex: 2,
-      }}
-      onLayout={(event) =>
-        setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height) - contentTopInset)
-      }
-    >
-      <ThreadListFilters
-        gutter={listGutter}
-        environments={props.environments}
-        projects={pickableProjectGroups(
-          sortHomeProjectScopes({
-            scopes: projectScopes,
-            threads: props.threads,
-            pendingTasks: [],
-            projectSortOrder: "updated_at",
-          }),
-        ).map((scope) => ({
-          key: scope.key,
-          label: scope.title,
-        }))}
-        selectedEnvironmentId={props.selectedEnvironmentId}
-        selectedProjectKey={props.selectedProjectKey}
-        onEnvironmentChange={props.onEnvironmentChange}
-        onProjectChange={props.onProjectChange}
-        threadMode={props.threadMode}
-        threadSortOrder={props.threadSortOrder}
-        onThreadSortOrderChange={props.onThreadSortOrderChange}
-        onThreadModeChange={changeThreadMode}
-      />
-      <HomeIosOtaBanner />
-    </View>
-  ) : null;
 
   const v2ListEmpty =
     hasSearchQuery && threadSearch.isPending ? (
@@ -826,7 +768,7 @@ export function HomeScreen(props: HomeScreenProps) {
           <SwipeableScrollGateProvider enabled={swipeEnabled} activation={swipeRowActivation}>
             <GestureDetector gesture={homeScrollGesture}>
               <AnimatedLegendList
-                itemLayoutAnimation={rowLayoutAnimation}
+                itemLayoutAnimation={THREAD_LIST_ROW_LAYOUT}
                 ref={listRef}
                 onLoad={() => {
                   settleLaunchSplashHomeRows();
@@ -890,7 +832,6 @@ export function HomeScreen(props: HomeScreenProps) {
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>
-          {pinnedFilters}
         </View>
       </ScreenContent>
     </View>

@@ -3,8 +3,14 @@ import { ThreadUndoNotice } from "./ThreadUndoNotice";
 import { use } from "react";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useNavigation } from "@react-navigation/native";
-import { useMemo, useState } from "react";
-import { Platform } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Platform, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useGT, useMessages } from "gt-react-native";
 
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -13,6 +19,7 @@ import {
   chatProjectKeys,
   filterThreadsForMode,
   isChatThread,
+  type ThreadListMode,
 } from "@t3tools/client-runtime/state/projects";
 
 import { useProjects } from "../../state/entities";
@@ -25,7 +32,8 @@ import {
   useWorkspacePaneState,
 } from "../layout/AdaptiveWorkspaceLayout";
 import { AndroidHomeFabLayout } from "./AndroidHomeFab";
-import { HomeScreen } from "./HomeScreen";
+import { HomeScreen, homePinsFilters } from "./HomeScreen";
+import { HomePinnedFilters } from "./HomePinnedFilters";
 import { useHomeListOptions } from "./home-list-options";
 import {
   runWhenHomeCovered,
@@ -129,38 +137,29 @@ export function HomeRouteScreen() {
   const threadMode = listOptions.threadMode;
   const chatMode = threadMode === "chat";
   const chatKeys = useMemo(() => chatProjectKeys(allProjects), [allProjects]);
-  const projects = useMemo(
-    () => allProjects.filter((project) => (project.isChat === true) === chatMode),
-    [allProjects, chatMode],
-  );
-  const threads = useMemo(
-    () => filterThreadsForMode(allThreads, threadMode, chatKeys),
-    [allThreads, threadMode, chatKeys],
-  );
-  const pendingTasks = useMemo(
-    () => allPendingTasks.filter((task) => isChatThread(task, chatKeys) === chatMode),
-    [allPendingTasks, chatKeys, chatMode],
-  );
+  // Both modes stay built, so switching only slides between ready lists.
+  const agentPage = useHomeModePage("agent", allProjects, allThreads, allPendingTasks, chatKeys);
+  const chatPage = useHomeModePage("chat", allProjects, allThreads, allPendingTasks, chatKeys);
   // Chat lists every computer's chats together, so the environment and project scope rest.
   const selectedEnvironmentId = chatMode ? null : listOptions.selectedEnvironmentId;
-  const projectScopes = useMemo(
+  const agentProjectScopes = useMemo(
     () =>
       buildHomeProjectScopes(
         {
-          projects,
-          environmentId: selectedEnvironmentId,
+          projects: agentPage.projects,
+          environmentId: listOptions.selectedEnvironmentId,
           projectGroupingMode: listOptions.projectGroupingMode,
         },
         m,
       ),
-    [listOptions.projectGroupingMode, projects, selectedEnvironmentId, m],
+    [listOptions.projectGroupingMode, agentPage.projects, listOptions.selectedEnvironmentId, m],
   );
-  const projectFilterOptions = useMemo(
+  const agentProjectFilterOptions = useMemo(
     () =>
       pickableProjectGroups(
         sortHomeProjectScopes({
-          scopes: projectScopes,
-          threads,
+          scopes: agentProjectScopes,
+          threads: agentPage.threads,
           pendingTasks: [],
           projectSortOrder: "updated_at",
         }),
@@ -168,11 +167,34 @@ export function HomeRouteScreen() {
         key: scope.key,
         label: scope.title,
       })),
-    [projectScopes, threads],
+    [agentProjectScopes, agentPage.threads],
   );
-  const selectedProjectKey = chatMode
-    ? null
-    : (resolveHomeProjectFilterScope(projectScopes, projects, listOptions)?.key ?? null);
+  const projectFilterOptions = chatMode ? [] : agentProjectFilterOptions;
+  const agentSelectedProjectKey =
+    resolveHomeProjectFilterScope(agentProjectScopes, agentPage.projects, listOptions)?.key ?? null;
+  const selectedProjectKey = chatMode ? null : agentSelectedProjectKey;
+
+  const pinsFilters = homePinsFilters(workspace);
+  const [filtersHeights, setFiltersHeights] = useState<Record<ThreadListMode, number>>({
+    agent: 0,
+    chat: 0,
+  });
+  const pageFiltersHeight = (mode: ThreadListMode) =>
+    filtersHeights[mode] || filtersHeights[mode === "chat" ? "agent" : "chat"];
+  const [pagerWidth, setPagerWidth] = useState(0);
+  const pageOffset = useSharedValue(chatMode ? 1 : 0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives the native slide animation toward the selected mode
+  useEffect(() => {
+    pageOffset.set(
+      withTiming(chatMode ? 1 : 0, {
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [chatMode, pageOffset]);
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -pageOffset.value * pagerWidth }],
+  }));
 
   if (layout.usesSplitView && !nativePrimaryColumn) {
     return (
@@ -214,59 +236,133 @@ export function HomeRouteScreen() {
           }}
         />
 
-        <HomeScreen
-          catalogState={catalogState}
-          environments={environments}
-          onAddConnection={() => openSettings(navigation, "SettingsEnvironmentNew")}
-          onArchiveThread={archiveThread}
-          onDeleteThread={confirmDeleteThread}
-          onSettleThread={settleThread}
-          onSnoozeThread={snoozeThread}
-          onUnsnoozeThread={unsnoozeThread}
-          onUnsettleThread={unsettleThread}
-          onPinThread={pinThread}
-          onUnpinThread={unpinThread}
-          onSetThreadAutoSettle={setThreadAutoSettle}
-          onMoveThread={moveThread}
-          onRenameThread={renameThread}
-          onRegenerateThreadTitle={regenerateThreadTitle}
-          onEnvironmentChange={setSelectedEnvironmentId}
-          onProjectChange={setSelectedProjectKey}
-          onOpenSettings={() => selectTab("settings")}
-          onSearchQueryChange={setSearchQuery}
-          onSelectThread={handleSelectThread}
-          onSelectPendingTask={openPendingTask}
-          onDeletePendingTask={confirmDeletePendingTask}
-          onNewThreadOnBranch={handleNewThreadOnBranch}
-          onNewThreadInProject={(project) => {
-            selectThreadRoute({
-              draft: {
-                requestId: uuidv4(),
-                environmentId: String(project.environmentId),
-                projectId: String(project.id),
-                title: project.title,
+        <View
+          style={{ flex: 1, overflow: "hidden" }}
+          onLayout={(event) => setPagerWidth(event.nativeEvent.layout.width)}
+        >
+          <Animated.View
+            style={[
+              {
+                flex: 1,
+                flexDirection: "row",
+                width: pagerWidth > 0 ? pagerWidth * 2 : "200%",
+                // Hidden until measured, so a saved Chat mode never flashes the Agent page.
+                opacity: pagerWidth > 0 ? 1 : 0,
               },
-            });
-          }}
-          onStartNewTask={startNewTask}
-          pendingTasks={pendingTasks}
-          projectGroupingMode={listOptions.projectGroupingMode}
-          projects={projects}
-          projectSortOrder={listOptions.projectSortOrder}
-          savedConnectionsById={savedConnectionsById}
-          searchQuery={searchQuery}
-          selectedEnvironmentId={selectedEnvironmentId}
-          selectedProjectKey={selectedProjectKey}
-          threads={threads}
-          threadMode={threadMode}
-          onThreadModeChange={setThreadMode}
-          threadSortOrder={listOptions.threadSortOrder}
-          onThreadSortOrderChange={setThreadSortOrder}
-          hasThreadsOutsideMode={allThreads.length > threads.length}
-          visible={visible}
-        />
+              pagerStyle,
+            ]}
+          >
+            {(["agent", "chat"] as const).map((mode) => {
+              const page = mode === "chat" ? chatPage : agentPage;
+              const active = mode === threadMode;
+              return (
+                <View
+                  key={mode}
+                  style={{ flex: 1 }}
+                  pointerEvents={active ? "auto" : "none"}
+                  accessibilityElementsHidden={!active}
+                  importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+                >
+                  <HomeScreen
+                    catalogState={catalogState}
+                    environments={environments}
+                    onAddConnection={() => openSettings(navigation, "SettingsEnvironmentNew")}
+                    onArchiveThread={archiveThread}
+                    onDeleteThread={confirmDeleteThread}
+                    onSettleThread={settleThread}
+                    onSnoozeThread={snoozeThread}
+                    onUnsnoozeThread={unsnoozeThread}
+                    onUnsettleThread={unsettleThread}
+                    onPinThread={pinThread}
+                    onUnpinThread={unpinThread}
+                    onSetThreadAutoSettle={setThreadAutoSettle}
+                    onMoveThread={moveThread}
+                    onRenameThread={renameThread}
+                    onRegenerateThreadTitle={regenerateThreadTitle}
+                    onOpenSettings={() => selectTab("settings")}
+                    onSearchQueryChange={setSearchQuery}
+                    onSelectThread={handleSelectThread}
+                    onSelectPendingTask={openPendingTask}
+                    onDeletePendingTask={confirmDeletePendingTask}
+                    onNewThreadOnBranch={handleNewThreadOnBranch}
+                    onNewThreadInProject={(project) => {
+                      selectThreadRoute({
+                        draft: {
+                          requestId: uuidv4(),
+                          environmentId: String(project.environmentId),
+                          projectId: String(project.id),
+                          title: project.title,
+                        },
+                      });
+                    }}
+                    onStartNewTask={startNewTask}
+                    projectGroupingMode={listOptions.projectGroupingMode}
+                    projectSortOrder={listOptions.projectSortOrder}
+                    savedConnectionsById={savedConnectionsById}
+                    searchQuery={searchQuery}
+                    threadSortOrder={listOptions.threadSortOrder}
+                    pendingTasks={page.pendingTasks}
+                    projects={page.projects}
+                    selectedEnvironmentId={
+                      mode === "chat" ? null : listOptions.selectedEnvironmentId
+                    }
+                    selectedProjectKey={mode === "chat" ? null : agentSelectedProjectKey}
+                    threads={page.threads}
+                    threadMode={mode}
+                    hasThreadsOutsideMode={allThreads.length > page.threads.length}
+                    visible={visible}
+                    active={active}
+                    pinnedFiltersHeight={pageFiltersHeight(mode)}
+                  />
+                </View>
+              );
+            })}
+          </Animated.View>
+          {pinsFilters ? (
+            <HomePinnedFilters
+              environments={environments}
+              projects={agentProjectFilterOptions}
+              selectedEnvironmentId={listOptions.selectedEnvironmentId}
+              selectedProjectKey={agentSelectedProjectKey}
+              onEnvironmentChange={setSelectedEnvironmentId}
+              onProjectChange={setSelectedProjectKey}
+              threadMode={threadMode}
+              onThreadModeChange={setThreadMode}
+              threadSortOrder={listOptions.threadSortOrder}
+              onThreadSortOrderChange={setThreadSortOrder}
+              onHeightChange={(height) =>
+                setFiltersHeights((heights) =>
+                  heights[threadMode] === height ? heights : { ...heights, [threadMode]: height },
+                )
+              }
+            />
+          ) : null}
+        </View>
         <ThreadUndoNotice visible={visible} />
       </>
     </AndroidHomeFabLayout>
   );
+}
+
+function useHomeModePage(
+  mode: ThreadListMode,
+  allProjects: ReturnType<typeof useProjects>,
+  allThreads: ReadonlyArray<EnvironmentThreadShell>,
+  allPendingTasks: ReturnType<typeof usePendingNewTasks>,
+  chatKeys: ReturnType<typeof chatProjectKeys>,
+) {
+  const chatMode = mode === "chat";
+  const projects = useMemo(
+    () => allProjects.filter((project) => (project.isChat === true) === chatMode),
+    [allProjects, chatMode],
+  );
+  const threads = useMemo(
+    () => filterThreadsForMode(allThreads, mode, chatKeys),
+    [allThreads, mode, chatKeys],
+  );
+  const pendingTasks = useMemo(
+    () => allPendingTasks.filter((task) => isChatThread(task, chatKeys) === chatMode),
+    [allPendingTasks, chatKeys, chatMode],
+  );
+  return { projects, threads, pendingTasks };
 }
