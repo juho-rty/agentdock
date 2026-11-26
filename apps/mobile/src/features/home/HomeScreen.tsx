@@ -106,6 +106,7 @@ import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
 import { deriveHomeEmptyState } from "./home-empty-state";
+import type { HomeThreadSortOrder } from "./home-list-options";
 
 interface HomeScreenProps {
   /** Whether this list is the one on screen; see `useHomeRouteVisible`. */
@@ -115,6 +116,8 @@ interface HomeScreenProps {
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
   readonly threadMode: ThreadListMode;
   readonly onThreadModeChange: (mode: ThreadListMode) => void;
+  readonly threadSortOrder: HomeThreadSortOrder;
+  readonly onThreadSortOrderChange: (sortOrder: HomeThreadSortOrder) => void;
   /** Keeps the list, and so the Agent | Chat switch, on screen while this mode is empty. */
   readonly hasThreadsOutsideMode: boolean;
   readonly catalogState: WorkspaceState;
@@ -445,6 +448,7 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozedShelfExpanded,
     settledShelfExpanded,
     selectedThreadKey,
+    recentFirst: props.threadSortOrder === "recent",
   });
   // Called as `props.onSelectThread(...)`, the compiler would cache this handler on the whole
   // props object, which is new on every render of Home's parent.
@@ -590,7 +594,9 @@ export function HomeScreen(props: HomeScreenProps) {
         reorderSupported={
           item.item.pinned
             ? pinReorderEnvironmentIds.has(thread.environmentId)
-            : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+            : !workingShelfEnabled &&
+              props.threadSortOrder !== "recent" &&
+              activeReorderEnvironmentIds.has(thread.environmentId)
         }
         canMoveUp={item.canMoveUp}
         canMoveDown={item.canMoveDown}
@@ -715,6 +721,8 @@ export function HomeScreen(props: HomeScreenProps) {
           onEnvironmentChange={props.onEnvironmentChange}
           onProjectChange={props.onProjectChange}
           threadMode={props.threadMode}
+          threadSortOrder={props.threadSortOrder}
+          onThreadSortOrderChange={props.onThreadSortOrderChange}
           onThreadModeChange={(mode) => {
             if (mode !== props.threadMode) slideToMode(mode);
             props.onThreadModeChange(mode);

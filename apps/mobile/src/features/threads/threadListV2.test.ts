@@ -386,6 +386,30 @@ describe("getThreadListV2OrderedSection", () => {
 });
 
 describe("buildThreadListV2Items", () => {
+  it("lists open threads by their latest message when newest first is on", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.make("older"),
+        title: "Older",
+        activeOrderKey: "a0",
+        latestUserMessageAt: "2026-06-01T08:00:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.make("newer"),
+        title: "Newer",
+        activeOrderKey: "a1",
+        latestUserMessageAt: "2026-06-01T20:00:00.000Z",
+      }),
+    ];
+    const input = { threads, environmentId: null, searchQuery: "", now: NOW };
+    const byHand = buildThreadListV2Items(input).items.map((item) => item.thread.id);
+    const recent = buildThreadListV2Items({ ...input, recentFirst: true }).items.map(
+      (item) => item.thread.id,
+    );
+    expect(recent).toEqual(["newer", "older"]);
+    expect(byHand).not.toEqual(recent);
+  });
+
   it("hides snoozed threads and counts them — visibility parity with web", () => {
     const layout = buildThreadListV2Items({
       threads: [

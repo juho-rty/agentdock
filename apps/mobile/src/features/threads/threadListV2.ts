@@ -33,6 +33,7 @@ import {
   resolveThreadActivityTimestamp,
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
+  sortThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
 import { isListedThreadLineage, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
@@ -738,6 +739,8 @@ export function buildThreadListV2Items(input: {
   readonly isListedSettled?: (thread: EnvironmentThreadShell) => boolean;
   /** Settled threads in scope that are not local (older settled threads not loaded). */
   readonly unloadedSettledCount?: number;
+  /** List open threads by their latest message instead of the inbox order. */
+  readonly recentFirst?: boolean;
 }): ThreadListV2Layout {
   const now = input.now;
   const pending =
@@ -862,12 +865,14 @@ export function buildThreadListV2Items(input: {
     };
   }
 
-  const orderedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
-    : prioritizeAttentionThreads(
-        applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending),
-        { stickyPriorityKey: input.selectedThreadKey ?? null },
-      );
+  const orderedActive = input.recentFirst
+    ? sortThreads(active, "updated_at")
+    : workingShelfEnabled
+      ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
+      : prioritizeAttentionThreads(
+          applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending),
+          { stickyPriorityKey: input.selectedThreadKey ?? null },
+        );
   const orderedWorking = sortWorkingThreadsBySend(working);
   const orderedSnoozed = [...snoozed].sort(
     (left, right) =>

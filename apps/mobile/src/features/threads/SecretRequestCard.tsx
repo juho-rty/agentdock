@@ -22,7 +22,7 @@ import type {
 import { useAtomValue } from "@effect/atom-react";
 import { useGT, useMessages } from "gt-react-native";
 import { useRef, useState } from "react";
-import { View, type ColorValue } from "react-native";
+import { Platform, Pressable, View, type ColorValue } from "react-native";
 
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
@@ -32,9 +32,16 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
+import { prompt as showTextInputDialog } from "../../components/ui/Dialog";
 
 const LOCK_SYMBOL: AppSymbolName = { ios: "lock", android: "lock" };
 const PRIVATE_SYMBOL: AppSymbolName = { ios: "checkmark.shield", android: "lock" };
+
+// On iOS a field inside the thread feed bounced up and down while typing: a masked
+// field swaps the keyboard (no Korean layout, no suggestion bar) and every height
+// change moved the feed that lifts with the keyboard. The value is typed in a
+// system alert instead, away from the feed.
+const ENTERS_IN_ALERT = Platform.OS === "ios";
 
 export function SecretRequestCard(props: {
   readonly environmentId: EnvironmentId;
@@ -114,17 +121,38 @@ function PendingSecretRequestForm(props: {
       setError(secretRequestFailureMessage(squashAtomCommandFailure(result), m));
     }
   };
-  const save = () => {
+  const save = (value: string = source === null ? secret : reference) => {
     if (source === null) {
-      void send({ type: "save", secret });
-    } else if (secretRequestReference(source, reference) === undefined) {
+      void send({ type: "save", secret: value });
+    } else if (secretRequestReference(source, value) === undefined) {
       setError(source.invalidReferenceMessage);
     } else {
-      void send({ type: "reference", source, reference });
+      void send({ type: "reference", source, reference: value });
     }
   };
   const draft = source === null ? secret : reference;
   const link = secretRequestLink(item);
+  const placeholder =
+    source === null
+      ? (item.placeholder ?? m(SECRET_REQUEST_DEFAULT_PLACEHOLDER))
+      : source.referencePlaceholder;
+  const enterInAlert = () => {
+    if (submitting) return;
+    showTextInputDialog({
+      title: item.label,
+      message: source === null ? placeholder : `${source.label} · ${placeholder}`,
+      initialValue: source === null ? "" : reference,
+      secure: source === null,
+      confirmText: gt("Save securely"),
+      onConfirm: (value) => {
+        if (value.trim().length === 0) return;
+        if (source === null) setSecret(value);
+        else setReference(value);
+        setError(null);
+        save(value);
+      },
+    });
+  };
 
   return (
     <View className="mb-3 gap-3 rounded-[20px] border border-border bg-card-alt p-4">
@@ -179,7 +207,23 @@ function PendingSecretRequestForm(props: {
           ))}
         </View>
       ) : null}
-      {source === null ? (
+      {ENTERS_IN_ALERT ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
+          disabled={submitting}
+          onPress={enterInAlert}
+        >
+          <View pointerEvents="none">
+            <TextInput
+              placeholder={placeholder}
+              value={draft}
+              editable={false}
+              secureTextEntry={source === null}
+            />
+          </View>
+        </Pressable>
+      ) : source === null ? (
         <SecretTextInput
           accessibilityLabel={item.label}
           placeholder={item.placeholder ?? m(SECRET_REQUEST_DEFAULT_PLACEHOLDER)}
@@ -209,7 +253,7 @@ function PendingSecretRequestForm(props: {
           importantForAutofill="no"
           spellCheck={false}
           returnKeyType="done"
-          onSubmitEditing={save}
+          onSubmitEditing={() => save()}
         />
       )}
       {error !== null ? (
@@ -225,8 +269,8 @@ function PendingSecretRequestForm(props: {
         label={gt("Save securely")}
         tone="primary"
         fullWidth
-        disabled={submitting || draft.trim().length === 0}
-        onPress={save}
+        disabled={submitting || (!ENTERS_IN_ALERT && draft.trim().length === 0)}
+        onPress={() => (ENTERS_IN_ALERT && draft.trim().length === 0 ? enterInAlert() : save())}
       />
       <View className="flex-row items-center justify-between gap-2">
         <View className="flex-1 flex-row items-center gap-1.5">

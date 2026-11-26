@@ -124,6 +124,7 @@ export function HomeRouteScreen() {
     setSelectedEnvironmentId,
     setSelectedProjectKey,
     setThreadMode,
+    setThreadSortOrder,
   } = useHomeListOptions(availableEnvironmentIds);
   const threadMode = listOptions.threadMode;
   const chatMode = threadMode === "chat";
@@ -205,6 +206,8 @@ export function HomeRouteScreen() {
                 selectedProjectKey,
                 onEnvironmentChange: setSelectedEnvironmentId,
                 onProjectChange: setSelectedProjectKey,
+                threadSortOrder: listOptions.threadSortOrder,
+                onThreadSortOrderChange: setThreadSortOrder,
               },
               m,
             ),
@@ -257,6 +260,8 @@ export function HomeRouteScreen() {
           threads={threads}
           threadMode={threadMode}
           onThreadModeChange={setThreadMode}
+          threadSortOrder={listOptions.threadSortOrder}
+          onThreadSortOrderChange={setThreadSortOrder}
           hasThreadsOutsideMode={allThreads.length > threads.length}
           visible={visible}
         />

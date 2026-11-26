@@ -66,6 +66,8 @@ export function useThreadListV2(input: {
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
   readonly selectedThreadKey: string | null;
+  /** Newest first: open threads by latest message, so they cannot be moved by hand. */
+  readonly recentFirst?: boolean;
 }) {
   const { threads, workingShelfEnabled } = input;
   const layoutTime = useMemo(
@@ -102,7 +104,7 @@ export function useThreadListV2(input: {
       });
     return new Map([
       ...sectionAvailability("pinned"),
-      ...(workingShelfEnabled ? [] : sectionAvailability("active")),
+      ...(workingShelfEnabled || input.recentFirst ? [] : sectionAvailability("active")),
     ]);
   }, [
     threads,
@@ -114,6 +116,7 @@ export function useThreadListV2(input: {
     input.snoozeEnvironmentIds,
     input.queuedThreadKeys,
     workingShelfEnabled,
+    input.recentFirst,
   ]);
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const scopes = useMemo(
@@ -154,6 +157,7 @@ export function useThreadListV2(input: {
         settledShelfExpanded: input.settledShelfExpanded,
         selectedThreadKey: input.selectedThreadKey,
         isListedSettled: isListed,
+        recentFirst: input.recentFirst,
         unloadedSettledCount: unloadedCount(
           threads.filter(
             (thread) =>
@@ -188,6 +192,7 @@ export function useThreadListV2(input: {
       isListed,
       unloadedCount,
       scopes,
+      input.recentFirst,
     ],
   );
   useOlderSettledShelfGrowth(olderSettledShelf, layout.listedSettledThreads);

@@ -9,11 +9,15 @@ import type { ThreadListFilters } from "../../persistence/mobile-preferences";
 import { updateMobilePreferencesAtom } from "../../state/preferences";
 import type { HomeProjectSortOrder } from "./homeThreadList";
 
+/** "default" is the inbox order (attention first, then by hand); "recent" is newest first. */
+export type HomeThreadSortOrder = "default" | "recent";
+
 export interface HomeListOptions {
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly selectedProjectKey: string | null;
   readonly threadMode: ThreadListMode;
   readonly projectSortOrder: HomeProjectSortOrder;
+  readonly threadSortOrder: HomeThreadSortOrder;
 }
 
 export interface ResolvedHomeListOptions extends HomeListOptions {
@@ -25,6 +29,7 @@ function defaultHomeListOptions(filters?: ThreadListFilters): HomeListOptions {
     selectedEnvironmentId: filters?.environmentId ?? null,
     selectedProjectKey: filters?.projectKey ?? null,
     threadMode: filters?.mode ?? "agent",
+    threadSortOrder: filters?.sort ?? "default",
     projectSortOrder:
       DEFAULT_SIDEBAR_PROJECT_SORT_ORDER === "manual"
         ? "updated_at"
@@ -52,7 +57,7 @@ export function HomeListOptionsProvider({
   const [optionsAtom] = useState(() => Atom.make(defaultHomeListOptions(savedFilters)));
   const options = useAtomValue(optionsAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
-  // Only the scope persists; the sort order is per session. Updates read the
+  // The scope and thread order persist; the project order is per session. Updates read the
   // registry, so several in one event each build on the last and save it.
   const updateOptions = (patch: Partial<HomeListOptions>) => {
     const current = registry.get(optionsAtom);
@@ -61,13 +66,15 @@ export function HomeListOptionsProvider({
     if (
       next.selectedEnvironmentId !== current.selectedEnvironmentId ||
       next.selectedProjectKey !== current.selectedProjectKey ||
-      next.threadMode !== current.threadMode
+      next.threadMode !== current.threadMode ||
+      next.threadSortOrder !== current.threadSortOrder
     ) {
       savePreferences({
         threadListFilters: {
           environmentId: next.selectedEnvironmentId,
           projectKey: next.selectedProjectKey,
           mode: next.threadMode,
+          sort: next.threadSortOrder,
         },
       });
     }
@@ -109,11 +116,15 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
   const setProjectSortOrder = (value: HomeProjectSortOrder) => {
     updateOptions({ projectSortOrder: value });
   };
+  const setThreadSortOrder = (value: HomeThreadSortOrder) => {
+    updateOptions({ threadSortOrder: value });
+  };
   return {
     options: resolvedOptions,
     setSelectedEnvironmentId,
     setSelectedProjectKey,
     setThreadMode,
     setProjectSortOrder,
+    setThreadSortOrder,
   } as const;
 }

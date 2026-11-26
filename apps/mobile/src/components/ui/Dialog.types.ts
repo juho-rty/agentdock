@@ -13,6 +13,8 @@ export type TextInputDialogRequest = {
   readonly message?: string;
   readonly placeholder?: string;
   readonly initialValue: string;
+  /** Mask the field, for a secret. iOS only; the Android dialog has no masked field. */
+  readonly secure?: boolean;
   readonly cancelText?: string;
   readonly confirmText: string;
   readonly onConfirm: (value: string) => void;

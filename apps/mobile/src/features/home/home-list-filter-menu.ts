@@ -7,6 +7,7 @@ import { msg } from "gt-react-native";
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import { m, type MessageResolver } from "../../i18n/messages";
 import type { WorkspaceEnvironment } from "../../state/workspaceModel";
+import type { HomeThreadSortOrder } from "./home-list-options";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
@@ -39,6 +40,8 @@ export function buildHomeListFilterMenuItems(
     readonly selectedProjectKey: string | null;
     readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
     readonly onProjectChange: (projectKey: string | null) => void;
+    readonly threadSortOrder?: HomeThreadSortOrder;
+    readonly onThreadSortOrderChange?: (sortOrder: HomeThreadSortOrder) => void;
   },
   resolve: MessageResolver = m,
 ): AppBarMenuItem[] {
@@ -82,6 +85,28 @@ export function buildHomeListFilterMenuItems(
           selected: props.selectedProjectKey === project.key,
           onPress: () => props.onProjectChange(project.key),
         })),
+      ],
+    });
+  }
+
+  const { threadSortOrder, onThreadSortOrderChange } = props;
+  if (threadSortOrder !== undefined && onThreadSortOrderChange !== undefined) {
+    items.push({
+      id: "sort",
+      title: resolve(msg("Sort")),
+      items: [
+        {
+          id: "sort:default",
+          title: resolve(msg("Default")),
+          selected: threadSortOrder === "default",
+          onPress: () => onThreadSortOrderChange("default"),
+        },
+        {
+          id: "sort:recent",
+          title: resolve(msg("Newest first")),
+          selected: threadSortOrder === "recent",
+          onPress: () => onThreadSortOrderChange("recent"),
+        },
       ],
     });
   }

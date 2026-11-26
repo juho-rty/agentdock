@@ -69,6 +69,7 @@ const ThreadListFilters = Schema.Struct({
   environmentId: Schema.NullOr(EnvironmentId),
   projectKey: Schema.NullOr(Schema.String),
   mode: Schema.optional(Schema.Literals(["agent", "chat"])),
+  sort: Schema.optional(Schema.Literals(["default", "recent"])),
 });
 export type ThreadListFilters = typeof ThreadListFilters.Type;
 

@@ -29,7 +29,7 @@ export function prompt(request: TextInputDialogRequest): void {
       { text: request.cancelText ?? m(msg("Cancel")), style: "cancel", onPress: request.onCancel },
       { text: request.confirmText, onPress: (value) => request.onConfirm(value ?? "") },
     ],
-    "plain-text",
+    request.secure ? "secure-text" : "plain-text",
     request.initialValue,
   );
 }
