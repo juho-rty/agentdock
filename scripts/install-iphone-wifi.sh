@@ -122,6 +122,10 @@ export APP_VARIANT=production
 export T3CODE_IOS_PERSONAL_TEAM=1
 export T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID="${T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID:-kr.ac.snu.jeongjuho.agentdock}"
 export EXPO_NO_GIT_STATUS=1
+# The JS bundle embeds app.config's version (Settings > About reads it), so stamp the release tag
+# the code is at (v0.1.52 -> 0.1.52) instead of app.config's fallback.
+RELEASE_TAG="$(git -C "$MOBILE_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
+[[ -n "$RELEASE_TAG" ]] && export T3CODE_MOBILE_VERSION="${RELEASE_TAG#v}"
 
 TEAM_ID="$(detect_team_id || true)"
 if [[ "$SIMULATOR_BUILD" -eq 0 && -z "$TEAM_ID" ]]; then
@@ -180,7 +184,6 @@ if [[ "$INSTALL_ONLY" -eq 0 ]]; then
     "$MOBILE_DIR/ios/$SCHEME_NAME/Info.plist" 2>/dev/null || true
   # The prebuilt ios/ folder keeps the version it was generated with; show the release tag the
   # code is at instead (v0.1.52 -> 0.1.52).
-  RELEASE_TAG="$(git -C "$MOBILE_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)"
   if [[ -n "$RELEASE_TAG" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_TAG#v}" \
       "$MOBILE_DIR/ios/$SCHEME_NAME/Info.plist" 2>/dev/null || true
