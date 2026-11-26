@@ -49,7 +49,6 @@ import {
   deriveCenteredContentHorizontalPadding,
 } from "../../lib/layout";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { GlassSurface } from "../../components/ui/GlassSurface";
 import { FloatingActionButton } from "../../components/ui/FloatingActionButton";
 import type { WorkspaceEnvironment, WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
@@ -170,8 +169,6 @@ const ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT = 72;
 // swipe-row-activation), so render further ahead: a fast fling then reaches
 // rows that are already built instead of rows still being rebuilt.
 const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
-// Inset of the pinned glass filter card from the column edges and the first row.
-const PINNED_FILTERS_MARGIN = 8;
 
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
@@ -705,48 +702,47 @@ export function HomeScreen(props: HomeScreenProps) {
 
   const listHeader = Platform.OS === "ios" ? undefined : <HomeTopContentSpacer />;
 
+  const listGutter = sidebarSurface ? 8 : 0;
   const pinnedFilters = pinsFilters ? (
     <View
-      pointerEvents="box-none"
+      className={contentBackground}
       style={{
         position: "absolute",
         top: contentTopInset,
-        left: (contentSideInsets?.left ?? 0) + PINNED_FILTERS_MARGIN,
-        right: (contentSideInsets?.right ?? 0) + PINNED_FILTERS_MARGIN,
+        left: 0,
+        right: 0,
+        paddingLeft: (contentSideInsets?.left ?? 0) + listGutter,
+        paddingRight: (contentSideInsets?.right ?? 0) + listGutter,
         zIndex: 2,
       }}
-      onLayout={(event) =>
-        setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height) + PINNED_FILTERS_MARGIN)
-      }
+      onLayout={(event) => setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height))}
     >
-      <GlassSurface style={{ borderRadius: 26, paddingTop: 8 }}>
-        <ThreadListFilters
-          gutter={PINNED_FILTERS_MARGIN}
-          environments={props.environments}
-          projects={pickableProjectGroups(
-            sortHomeProjectScopes({
-              scopes: projectScopes,
-              threads: props.threads,
-              pendingTasks: [],
-              projectSortOrder: "updated_at",
-            }),
-          ).map((scope) => ({
-            key: scope.key,
-            label: scope.title,
-          }))}
-          selectedEnvironmentId={props.selectedEnvironmentId}
-          selectedProjectKey={props.selectedProjectKey}
-          onEnvironmentChange={props.onEnvironmentChange}
-          onProjectChange={props.onProjectChange}
-          threadMode={props.threadMode}
-          threadSortOrder={props.threadSortOrder}
-          onThreadSortOrderChange={props.onThreadSortOrderChange}
-          onThreadModeChange={(mode) => {
-            if (mode !== props.threadMode) slideToMode(mode);
-            props.onThreadModeChange(mode);
-          }}
-        />
-      </GlassSurface>
+      <ThreadListFilters
+        gutter={listGutter}
+        environments={props.environments}
+        projects={pickableProjectGroups(
+          sortHomeProjectScopes({
+            scopes: projectScopes,
+            threads: props.threads,
+            pendingTasks: [],
+            projectSortOrder: "updated_at",
+          }),
+        ).map((scope) => ({
+          key: scope.key,
+          label: scope.title,
+        }))}
+        selectedEnvironmentId={props.selectedEnvironmentId}
+        selectedProjectKey={props.selectedProjectKey}
+        onEnvironmentChange={props.onEnvironmentChange}
+        onProjectChange={props.onProjectChange}
+        threadMode={props.threadMode}
+        threadSortOrder={props.threadSortOrder}
+        onThreadSortOrderChange={props.onThreadSortOrderChange}
+        onThreadModeChange={(mode) => {
+          if (mode !== props.threadMode) slideToMode(mode);
+          props.onThreadModeChange(mode);
+        }}
+      />
     </View>
   ) : null;
 
