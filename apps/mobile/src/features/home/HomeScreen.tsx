@@ -716,16 +716,20 @@ export function HomeScreen(props: HomeScreenProps) {
   const pinnedFilters = pinsFilters ? (
     <View
       className={contentBackground}
+      // Opaque from the screen top, so rows scrolling up stay hidden behind the nav bar too.
       style={{
         position: "absolute",
-        top: contentTopInset,
+        top: 0,
         left: 0,
         right: 0,
+        paddingTop: contentTopInset,
         paddingLeft: (contentSideInsets?.left ?? 0) + listGutter,
         paddingRight: (contentSideInsets?.right ?? 0) + listGutter,
         zIndex: 2,
       }}
-      onLayout={(event) => setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height))}
+      onLayout={(event) =>
+        setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height) - contentTopInset)
+      }
     >
       <ThreadListFilters
         gutter={listGutter}

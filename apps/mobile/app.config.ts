@@ -258,7 +258,8 @@ const agentDockScheme =
     : APP_VARIANT === "preview"
       ? ["agentdock-preview", "t3code-preview"]
       : ["agentdock", "t3code"];
-const agentDockIcon = fromRepoRoot("assets/agentdock/agentdock-1024.png");
+// Full-bleed and opaque: iOS masks the icon itself, so the macOS tile's margin would shrink it.
+const agentDockIcon = fromRepoRoot("assets/agentdock/agentdock-ios-1024.png");
 
 const config: ExpoConfig = {
   name: isIosPersonalTeamBuild ? agentDockAppName : variant.appName,
