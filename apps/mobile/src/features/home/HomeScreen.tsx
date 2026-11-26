@@ -101,7 +101,6 @@ import {
 import { createSwipeRowActivation } from "./swipe-row-activation";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
 import { useFabScroll } from "./FabScrollContext";
-import { ThreadModeSlide, useThreadModeSlide } from "./ThreadModeSlide";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
@@ -475,11 +474,22 @@ export function HomeScreen(props: HomeScreenProps) {
     if (swipeEnabled) activateVisibleRows(threadListV2Items);
   }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
 
-  const { progress: modeSlide, slideTo: slideToMode } = useThreadModeSlide();
-  const renderV2Item = (info: { readonly item: ThreadListV2ListItem }) => (
-    <ThreadModeSlide progress={modeSlide}>{renderV2ItemContent(info)}</ThreadModeSlide>
-  );
-  const renderV2ItemContent = ({ item }: { readonly item: ThreadListV2ListItem }) => {
+  // Agent/Chat swaps the rows in place: row layout animation pauses across the switch so it
+  // does not look like the list reloading.
+  const [modeSwitching, setModeSwitching] = useState(false);
+  const modeSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the mode switch timer on unmount
+  useEffect(() => () => clearTimeout(modeSwitchTimerRef.current), []);
+  const changeThreadMode = (mode: ThreadListMode) => {
+    if (mode !== props.threadMode) {
+      setModeSwitching(true);
+      clearTimeout(modeSwitchTimerRef.current);
+      modeSwitchTimerRef.current = setTimeout(() => setModeSwitching(false), 400);
+    }
+    props.onThreadModeChange(mode);
+  };
+  const rowLayoutAnimation = modeSwitching ? undefined : THREAD_LIST_ROW_LAYOUT;
+  const renderV2Item = ({ item }: { readonly item: ThreadListV2ListItem }) => {
     if (item.type === "v2-pending") {
       const pendingScopeKey = scopedProjectKey(
         item.pendingTask.environmentId,
@@ -738,10 +748,7 @@ export function HomeScreen(props: HomeScreenProps) {
         threadMode={props.threadMode}
         threadSortOrder={props.threadSortOrder}
         onThreadSortOrderChange={props.onThreadSortOrderChange}
-        onThreadModeChange={(mode) => {
-          if (mode !== props.threadMode) slideToMode(mode);
-          props.onThreadModeChange(mode);
-        }}
+        onThreadModeChange={changeThreadMode}
       />
     </View>
   ) : null;
@@ -768,13 +775,11 @@ export function HomeScreen(props: HomeScreenProps) {
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : props.threadMode === "chat" ? (
-      <ThreadModeSlide progress={modeSlide}>
-        <EmptyState
-          title={gt("No chats yet")}
-          detail={gt("Start a chat to ask something without a project or tools.")}
-          variant={Platform.OS === "android" ? "plain" : undefined}
-        />
-      </ThreadModeSlide>
+      <EmptyState
+        title={gt("No chats yet")}
+        detail={gt("Start a chat to ask something without a project or tools.")}
+        variant={Platform.OS === "android" ? "plain" : undefined}
+      />
     ) : v2ScopedProjectGroup !== null ? (
       <EmptyState
         title={gt("No threads in {name}", { name: v2ScopedProjectGroup.title })}
@@ -815,7 +820,7 @@ export function HomeScreen(props: HomeScreenProps) {
           <SwipeableScrollGateProvider enabled={swipeEnabled} activation={swipeRowActivation}>
             <GestureDetector gesture={homeScrollGesture}>
               <AnimatedLegendList
-                itemLayoutAnimation={THREAD_LIST_ROW_LAYOUT}
+                itemLayoutAnimation={rowLayoutAnimation}
                 ref={listRef}
                 onLoad={() => {
                   settleLaunchSplashHomeRows();
