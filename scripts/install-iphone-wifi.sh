@@ -174,6 +174,10 @@ if [[ "$INSTALL_ONLY" -eq 0 ]]; then
   # runs on registered devices); the generic destination keeps whatever the profile already has.
   BUILD_DESTINATION="generic/platform=iOS"
   [[ -n "$TARGET_DEVICE" ]] && BUILD_DESTINATION="id=$TARGET_DEVICE"
+  # A fresh build number per build, so iOS replaces the app on an OTA install and
+  # Settings shows which build is on the phone.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" \
+    "$MOBILE_DIR/ios/$SCHEME_NAME/Info.plist" 2>/dev/null || true
   echo "==> Building standalone Release app for iPhone ($SCHEME_NAME) — no Metro needed at runtime..."
   xcodebuild \
     -workspace "$WORKSPACE_PATH" \
