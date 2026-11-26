@@ -49,6 +49,7 @@ import {
   deriveCenteredContentHorizontalPadding,
 } from "../../lib/layout";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { GlassSurface } from "../../components/ui/GlassSurface";
 import { FloatingActionButton } from "../../components/ui/FloatingActionButton";
 import type { WorkspaceEnvironment, WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
@@ -169,6 +170,8 @@ const ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT = 72;
 // swipe-row-activation), so render further ahead: a fast fling then reaches
 // rows that are already built instead of rows still being rebuilt.
 const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
+// Inset of the pinned glass filter card from the column edges and the first row.
+const PINNED_FILTERS_MARGIN = 8;
 
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
@@ -225,6 +228,10 @@ export function HomeScreen(props: HomeScreenProps) {
   const homeScrollGesture = useNativeGesture();
   const insets = useSafeAreaInsets();
   const contentTopInset = useContentTopInset();
+  // iOS pins the mode/filter bar under the nav bar; rows scroll beneath it.
+  const pinsFilters = Platform.OS === "ios" && workspace !== undefined && workspace !== null;
+  const [pinnedFiltersHeight, setPinnedFiltersHeight] = useState(0);
+  const listTopInset = contentTopInset + (pinsFilters ? pinnedFiltersHeight : 0);
   const emptyTopInset = useWorkspaceListEmptyTopInset();
   const { fabClearance } = useAndroidControlSizing();
   const screenMetrics = useNativeLayoutMetrics();
@@ -289,7 +296,7 @@ export function HomeScreen(props: HomeScreenProps) {
   useSearchScrollRestoration(searchMode, () => {
     if (restoredOffset === undefined) return;
     void listRef.current?.scrollToOffset({
-      offset: restoredOffset - contentTopInset,
+      offset: restoredOffset - listTopInset,
       animated: false,
     });
   });
@@ -310,7 +317,7 @@ export function HomeScreen(props: HomeScreenProps) {
     if (workspace)
       workspace.recordScrollOffset(
         "threads",
-        Math.max(0, event.nativeEvent.contentOffset.y + contentTopInset),
+        Math.max(0, event.nativeEvent.contentOffset.y + listTopInset),
       );
     clearTimeout(activationTimerRef.current);
     activationTimerRef.current = setTimeout(
@@ -698,12 +705,23 @@ export function HomeScreen(props: HomeScreenProps) {
 
   const listHeader = Platform.OS === "ios" ? undefined : <HomeTopContentSpacer />;
 
-  const v2ListHeader = (
-    <>
-      {listHeader}
-      {Platform.OS === "ios" && workspace ? (
+  const pinnedFilters = pinsFilters ? (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: contentTopInset,
+        left: (contentSideInsets?.left ?? 0) + PINNED_FILTERS_MARGIN,
+        right: (contentSideInsets?.right ?? 0) + PINNED_FILTERS_MARGIN,
+        zIndex: 2,
+      }}
+      onLayout={(event) =>
+        setPinnedFiltersHeight(Math.ceil(event.nativeEvent.layout.height) + PINNED_FILTERS_MARGIN)
+      }
+    >
+      <GlassSurface style={{ borderRadius: 26, paddingTop: 8 }}>
         <ThreadListFilters
-          gutter={sidebarSurface ? 8 : 0}
+          gutter={PINNED_FILTERS_MARGIN}
           environments={props.environments}
           projects={pickableProjectGroups(
             sortHomeProjectScopes({
@@ -728,9 +746,9 @@ export function HomeScreen(props: HomeScreenProps) {
             props.onThreadModeChange(mode);
           }}
         />
-      ) : null}
-    </>
-  );
+      </GlassSurface>
+    </View>
+  ) : null;
 
   const v2ListEmpty =
     hasSearchQuery && threadSearch.isPending ? (
@@ -820,9 +838,7 @@ export function HomeScreen(props: HomeScreenProps) {
                 drawDistance={THREAD_LIST_V2_DRAW_DISTANCE}
                 recycleItems
                 extraData={v2ExtraData}
-                ListHeaderComponent={v2ListHeader}
-                // Lifted above the rows so an iOS filter menu's dismissal morph is not covered.
-                ListHeaderComponentStyle={{ zIndex: 1 }}
+                ListHeaderComponent={listHeader}
                 ListFooterComponent={
                   settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0 ? (
                     <ThreadListV2ShowMoreRow
@@ -843,9 +859,9 @@ export function HomeScreen(props: HomeScreenProps) {
                 style={{ flex: 1 }}
                 automaticallyAdjustsScrollIndicatorInsets={Platform.OS === "ios"}
                 contentInsetAdjustmentBehavior="never"
-                contentInset={Platform.OS === "ios" ? { top: contentTopInset } : undefined}
+                contentInset={Platform.OS === "ios" ? { top: listTopInset } : undefined}
                 initialScrollOffset={
-                  initialScrollOffset > 0 ? initialScrollOffset - contentTopInset : undefined
+                  initialScrollOffset > 0 ? initialScrollOffset - listTopInset : undefined
                 }
                 showsVerticalScrollIndicator={false}
                 keyboardDismissMode="on-drag"
@@ -867,6 +883,7 @@ export function HomeScreen(props: HomeScreenProps) {
               />
             </GestureDetector>
           </SwipeableScrollGateProvider>
+          {pinnedFilters}
         </View>
       </ScreenContent>
     </View>

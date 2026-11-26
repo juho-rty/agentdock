@@ -4,6 +4,7 @@ import { useGT } from "gt-react-native";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 
+import { AgentDockMark } from "./AgentDockMark";
 import { AppText as Text } from "./ui/AppText";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { isMobileLiteBuild } from "../lib/liteMode";
@@ -57,6 +58,9 @@ export function CompactBrandTitle(
         props.fit && { flexShrink: 0 },
       ]}
     >
+      <View style={{ marginRight: 4 * scale }}>
+        <AgentDockMark size={22 * scale} />
+      </View>
       <Text
         allowFontScaling={props.allowFontScaling}
         maxFontSizeMultiplier={BRAND_MAX_FONT_SCALE}
