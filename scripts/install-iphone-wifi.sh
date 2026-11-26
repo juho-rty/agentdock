@@ -23,6 +23,7 @@ CLEAN_PREBUILD=0
 BUILD_ONLY=0
 INSTALL_ONLY=0
 SIMULATOR_BUILD=0
+RENEW_PROFILE=0
 TARGET_DEVICE="${IOS_DEVICE:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +43,10 @@ while [[ $# -gt 0 ]]; do
     --simulator)
       SIMULATOR_BUILD=1
       BUILD_ONLY=1
+      shift
+      ;;
+    --renew-profile)
+      RENEW_PROFILE=1
       shift
       ;;
     --device)
@@ -174,6 +179,54 @@ if [[ "$INSTALL_ONLY" -eq 0 ]]; then
     exit 0
   fi
 
+  # Resolve or refresh the 7-day Personal Team provisioning expiration before xcodebuild embeds app.config.
+  PROVISIONING_EXPIRES_AT="$(python3 - "$TEAM_ID" "$T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID" "$RENEW_PROFILE" <<'PY'
+import datetime, glob, os, plistlib, subprocess, sys
+
+team_id, bundle_id, force_renew = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+target_app_id = f"{team_id}.{bundle_id}"
+now = datetime.datetime.now(datetime.timezone.utc)
+renew_cutoff = now + datetime.timedelta(days=2)
+
+dirs = [
+    os.path.expanduser("~/Library/Developer/Xcode/UserData/Provisioning Profiles"),
+    os.path.expanduser("~/Library/MobileDevice/Provisioning Profiles"),
+]
+best_exp = None
+for d in dirs:
+    for path in glob.glob(os.path.join(d, "*.mobileprovision")):
+        try:
+            raw = subprocess.check_output(["security", "cms", "-D", "-i", path], stderr=subprocess.DEVNULL)
+            plist = plistlib.loads(raw)
+        except Exception:
+            continue
+        ent = plist.get("Entitlements", {})
+        app_id = ent.get("application-identifier", "")
+        if app_id not in (target_app_id, f"{team_id}.*"):
+            continue
+        exp = plist.get("ExpirationDate")
+        if not isinstance(exp, datetime.datetime):
+            continue
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=datetime.timezone.utc)
+        if force_renew or exp <= renew_cutoff:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        if best_exp is None or exp > best_exp:
+            best_exp = exp
+
+if best_exp is None:
+    best_exp = now + datetime.timedelta(days=7)
+
+print(best_exp.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+PY
+  )"
+  export AGENTDOCK_PROVISIONING_EXPIRES_AT="$PROVISIONING_EXPIRES_AT"
+  echo "==> Provisioning expires at: $AGENTDOCK_PROVISIONING_EXPIRES_AT"
+
   # A named device makes automatic signing register its UDID (a free Personal Team profile only
   # runs on registered devices); the generic destination keeps whatever the profile already has.
   BUILD_DESTINATION="generic/platform=iOS"
@@ -188,6 +241,9 @@ if [[ "$INSTALL_ONLY" -eq 0 ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${RELEASE_TAG#v}" \
       "$MOBILE_DIR/ios/$SCHEME_NAME/Info.plist" 2>/dev/null || true
   fi
+  # Clear stale Metro assets from previous DerivedData builds so removed images do not linger in the .app.
+  rm -rf "$DERIVED_DATA_DIR/Build/Products/Release-iphoneos/$SCHEME_NAME.app/assets" 2>/dev/null || true
+
   echo "==> Building standalone Release app for iPhone ($SCHEME_NAME) — no Metro needed at runtime..."
   xcodebuild \
     -workspace "$WORKSPACE_PATH" \
@@ -211,6 +267,12 @@ if [[ "$INSTALL_ONLY" -eq 0 ]]; then
   rm -rf "$ARTIFACT_DIR/AgentDock.app"
   ditto "$BUILT_APP" "$ARTIFACT_DIR/AgentDock.app"
   echo "==> Standalone Release app staged at: $ARTIFACT_DIR/AgentDock.app"
+
+  OTA_STAGE_SCRIPT="/Users/Shared/agentdock-maintenance/ios-ota/stage.sh"
+  if [[ -x "$OTA_STAGE_SCRIPT" || -f "$OTA_STAGE_SCRIPT" ]]; then
+    echo "==> Updating wireless OTA feed ($OTA_STAGE_SCRIPT)..."
+    bash "$OTA_STAGE_SCRIPT" "$ARTIFACT_DIR/AgentDock.app"
+  fi
 fi
 
 if [[ "$BUILD_ONLY" -eq 1 ]]; then

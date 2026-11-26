@@ -433,20 +433,24 @@ const config: ExpoConfig = {
         },
       },
     ],
-    [
-      "expo-audio",
-      {
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
-        recordAudioAndroid: true,
-        enableBackgroundPlayback: false,
-        enableBackgroundRecording: false,
-      },
-    ],
+    ...(isLiteBuild
+      ? []
+      : [
+          [
+            "expo-audio",
+            {
+              microphonePermission: "Allow AgentDock to use your microphone for voice input.",
+              recordAudioAndroid: true,
+              enableBackgroundPlayback: false,
+              enableBackgroundRecording: false,
+            },
+          ] as NonNullable<ExpoConfig["plugins"]>[number],
+        ]),
     [
       "expo-camera",
       {
         cameraPermission:
-          "Allow T3 Code to use your camera to take photos for chat and scan pairing QR codes.",
+          "Allow AgentDock to use your camera to take photos for chat and scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -457,18 +461,21 @@ const config: ExpoConfig = {
       {
         photosPermission: false,
         // `false` makes this plugin add RECORD_AUDIO to blockedPermissions, breaking Android dictation.
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
+        microphonePermission:
+          isLiteBuild && isIosPersonalTeamBuild
+            ? false
+            : "Allow AgentDock to use your microphone for voice input.",
       },
     ],
     [
       "expo-splash-screen",
       {
-        image: variant.assets.splashIcon,
+        image: isIosPersonalTeamBuild ? agentDockIcon : variant.assets.splashIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
         imageWidth: 220,
         dark: {
-          image: variant.assets.splashIcon,
+          image: isIosPersonalTeamBuild ? agentDockIcon : variant.assets.splashIcon,
           backgroundColor: "#0a0a0a",
         },
         android: {
@@ -527,6 +534,14 @@ const config: ExpoConfig = {
       process.env.T3CODE_FEATURE_SECRETS?.trim().toLowerCase() ?? "",
     ),
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
+    otaManifestUrl:
+      repoEnv.AGENTDOCK_OTA_MANIFEST_URL ??
+      process.env.AGENTDOCK_OTA_MANIFEST_URL ??
+      "https://s-mac-mini.tail029af8.ts.net/ios/manifest.plist",
+    provisioningExpiresAt:
+      repoEnv.AGENTDOCK_PROVISIONING_EXPIRES_AT ??
+      process.env.AGENTDOCK_PROVISIONING_EXPIRES_AT ??
+      null,
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
     },

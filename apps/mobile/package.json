@@ -195,7 +195,13 @@
           "@clerk/expo-native-components",
           "expo-observe",
           "expo-updates",
-          "@react-native-ai/apple"
+          "@react-native-ai/apple",
+          "expo-dev-client",
+          "expo-dev-launcher",
+          "expo-dev-menu",
+          "expo-widgets",
+          "@t3tools/mobile-terminal-native",
+          "expo-audio"
         ]
       }
     }

@@ -54,6 +54,42 @@ const LITE_SHIM_FILES = {
     "module.exports = AppleTranscription;",
     "module.exports.default = AppleTranscription;",
   ].join("\n"),
+  "expo-widgets.js": [
+    "exports.createWidget = function createWidget() {",
+    "  return { updateSnapshot() {}, updateTimeline() {}, reload() {}, getTimeline: async () => [] };",
+    "};",
+    "exports.createLiveActivity = function createLiveActivity() {",
+    "  return { start: () => null, getInstances: () => [] };",
+    "};",
+    "exports.addUserInteractionListener = function addUserInteractionListener() {",
+    "  return { remove() {} };",
+    "};",
+  ].join("\n"),
+  "expo-audio.js": [
+    "exports.AudioModule = { AudioRecorder: class AudioRecorder {}, setAudioSessionOwner() {} };",
+    "exports.RecordingPresets = { HIGH_QUALITY: {}, LOW_QUALITY: {} };",
+    "exports.createAudioPlayer = function createAudioPlayer() {",
+    "  return {",
+    "    id: 0, playing: false, muted: false, loop: false, paused: true, isLoaded: false,",
+    "    isBuffering: false, currentTime: 0, duration: 0, volume: 1, playbackRate: 1,",
+    "    shouldCorrectPitch: true, play() {}, pause() {}, replace() {},",
+    "    seekTo: async () => {}, remove() {}, release() {}, addListener: () => ({ remove() {} }),",
+    "  };",
+    "};",
+    "exports.useAudioPlayerStatus = function useAudioPlayerStatus() {",
+    "  return {",
+    "    id: 0, playing: false, muted: false, loop: false, didJustFinish: false,",
+    "    isBuffering: false, isLoaded: false, playbackRate: 1, timeControlStatus: 'paused',",
+    "    reasonForWaitingToPlay: '', currentTime: 0, duration: 0,",
+    "  };",
+    "};",
+    "const denied = { status: 'denied', granted: false, canAskAgain: false, expires: 'never' };",
+    "exports.getRecordingPermissionsAsync = async () => denied;",
+    "exports.requestRecordingPermissionsAsync = async () => denied;",
+    "exports.setAudioModeAsync = async () => {};",
+    "exports.setIsAudioActiveAsync = async () => {};",
+  ].join("\n"),
+  "empty-translations.json": "{}\n",
 };
 
 const LITE_MODULE_REDIRECTS = {
@@ -63,12 +99,17 @@ const LITE_MODULE_REDIRECTS = {
   "@clerk/expo-native-components": path.join(generatedLiteShimsRoot, "clerk-native-components.js"),
   "expo-observe": path.join(generatedLiteShimsRoot, "expo-observe.js"),
   "expo-updates": path.join(generatedLiteShimsRoot, "expo-updates.js"),
+  "expo-widgets": path.join(generatedLiteShimsRoot, "expo-widgets.js"),
+  "expo-audio": path.join(generatedLiteShimsRoot, "expo-audio.js"),
   "@react-native-ai/apple": path.join(generatedLiteShimsRoot, "apple-transcription.js"),
   "@react-native-ai/apple/src/NativeAppleTranscription": path.join(
     generatedLiteShimsRoot,
     "apple-transcription.js",
   ),
 };
+
+const LITE_TRIMMED_TRANSLATION_RE =
+  /(?:^|[/\\])translations[/\\](?:es|zh|pt-BR|fr|de|ja|ru|sv)\.json$/;
 
 const upstreamResolveRequest = config.resolver?.resolveRequest;
 
@@ -90,11 +131,19 @@ config.resolver = {
     "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
   },
   resolveRequest: (context, moduleName, platform) => {
-    if (isLiteBuild && Object.prototype.hasOwnProperty.call(LITE_MODULE_REDIRECTS, moduleName)) {
-      return {
-        type: "sourceFile",
-        filePath: LITE_MODULE_REDIRECTS[moduleName],
-      };
+    if (isLiteBuild) {
+      if (Object.prototype.hasOwnProperty.call(LITE_MODULE_REDIRECTS, moduleName)) {
+        return {
+          type: "sourceFile",
+          filePath: LITE_MODULE_REDIRECTS[moduleName],
+        };
+      }
+      if (LITE_TRIMMED_TRANSLATION_RE.test(moduleName)) {
+        return {
+          type: "sourceFile",
+          filePath: path.join(generatedLiteShimsRoot, "empty-translations.json"),
+        };
+      }
     }
     if (upstreamResolveRequest) {
       return upstreamResolveRequest(context, moduleName, platform);
@@ -122,11 +171,20 @@ async function generateMobileThirdPartyLicenses() {
     configFile: path.join(workspaceRoot, "third-party-licenses.config.json"),
     packageManifests: [{ bundle: "mobile", path: path.join(__dirname, "package.json") }],
   });
+  const outputManifest = isLiteBuild
+    ? {
+        ...manifest,
+        entries: manifest.entries.map((entry) => ({
+          ...entry,
+          noticeText: entry.license ? `SPDX-License-Identifier: ${entry.license}` : "",
+        })),
+      }
+    : manifest;
 
   await Promise.all([
     writeFileIfChanged(
       path.join(generatedLicenseModuleRoot, "index.js"),
-      `module.exports = ${JSON.stringify(manifest)};\n`,
+      `module.exports = ${JSON.stringify(outputManifest)};\n`,
     ),
     writeFileIfChanged(
       path.join(generatedLicenseModuleRoot, "package.json"),
@@ -136,6 +194,18 @@ async function generateMobileThirdPartyLicenses() {
 }
 
 async function prepareStreamScripts() {
+  if (isLiteBuild) {
+    await Promise.all(
+      [generatedDeviceStreamRoot, generatedPreviewStreamRoot].map(async (root) => {
+        await fs.promises.mkdir(root, { recursive: true });
+        await Promise.all([
+          writeFileIfChanged(path.join(root, "index.js"), 'module.exports = "";\n'),
+          writeFileIfChanged(path.join(root, "package.json"), '{"main":"index.js"}\n'),
+        ]);
+      }),
+    );
+    return;
+  }
   const { generateDeviceStreamScript, generatePreviewStreamScript } = await import(
     pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href
   );

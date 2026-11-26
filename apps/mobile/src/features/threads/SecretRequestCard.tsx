@@ -121,7 +121,12 @@ function PendingSecretRequestForm(props: {
       setError(secretRequestFailureMessage(squashAtomCommandFailure(result), m));
     }
   };
-  const save = (value: string = source === null ? secret : reference) => {
+  const draft = source === null ? secret : reference;
+  const save = (explicitValue?: string) => {
+    let value = draft;
+    if (explicitValue !== undefined) {
+      value = explicitValue;
+    }
     if (source === null) {
       void send({ type: "save", secret: value });
     } else if (secretRequestReference(source, value) === undefined) {
@@ -130,7 +135,6 @@ function PendingSecretRequestForm(props: {
       void send({ type: "reference", source, reference: value });
     }
   };
-  const draft = source === null ? secret : reference;
   const link = secretRequestLink(item);
   const placeholder =
     source === null

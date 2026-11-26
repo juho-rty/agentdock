@@ -135,24 +135,26 @@ export function useComposerAttachmentActions(props: {
     if (!key || props.locked) return;
     const insertion = captureComposerDraftInsertion(key);
     await withDraftOperation(key, async (signal) => {
+      let result: Awaited<ReturnType<typeof convertPastedImagesToAttachments>>;
       try {
-        const result = await convertPastedImagesToAttachments({
+        result = await convertPastedImagesToAttachments({
           uris: [uri],
           existingCount: countComposerDraftAttachmentsAfterSelection(key, insertion),
           namePrefix: "photo",
         });
-        const rejected =
-          result.attachments.length > 0
-            ? await append(key, signal, result.attachments, insertion)
-            : 0;
-        const full = result.attachments.length === 0 && result.error === null ? 1 : rejected;
-        report(m(msg("Could not attach photo")), result.error, full);
       } catch (error) {
         Dialog.alert(
           m(msg("Could not attach photo")),
           errorDisplayMessage(error, m) ?? m(msg("Try again.")),
         );
+        return;
       }
+      const rejected =
+        result.attachments.length > 0
+          ? await append(key, signal, result.attachments, insertion)
+          : 0;
+      const full = result.attachments.length === 0 && result.error === null ? 1 : rejected;
+      report(m(msg("Could not attach photo")), result.error, full);
     });
   };
   const onNativePasteText = async (paste: ComposerTextPaste) => {

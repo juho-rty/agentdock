@@ -104,6 +104,7 @@ import { useFabScroll } from "./FabScrollContext";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
+import { HomeIosOtaBanner } from "./HomeIosOtaBanner";
 import { deriveHomeEmptyState } from "./home-empty-state";
 import type { HomeThreadSortOrder } from "./home-list-options";
 
@@ -754,6 +755,7 @@ export function HomeScreen(props: HomeScreenProps) {
         onThreadSortOrderChange={props.onThreadSortOrderChange}
         onThreadModeChange={changeThreadMode}
       />
+      <HomeIosOtaBanner />
     </View>
   ) : null;
 

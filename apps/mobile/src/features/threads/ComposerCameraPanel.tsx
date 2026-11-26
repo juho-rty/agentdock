@@ -1,12 +1,90 @@
-import { CameraView, useCameraPermissions, type CameraType } from "expo-camera";
+import { useIsFocused } from "@react-navigation/native";
+import { CameraView, useCameraPermissions, type CameraType, type FlashMode } from "expo-camera";
+import * as Haptics from "expo-haptics";
 import { useGT } from "gt-react-native";
-import { useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRef, useState, useSyncExternalStore } from "react";
+import {
+  ActivityIndicator,
+  AppState,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 
 const PANEL_HEIGHT = 300;
+const MAX_CAPTURE_EDGE = 1920;
+const CAPTURE_JPEG_QUALITY = 0.82;
+
+function subscribeAppState(onStoreChange: () => void) {
+  const subscription = AppState.addEventListener("change", onStoreChange);
+  return () => subscription.remove();
+}
+
+function getAppActiveSnapshot() {
+  return AppState.currentState === "active";
+}
+
+function nextFlashMode(mode: FlashMode): FlashMode {
+  if (mode === "off") return "auto";
+  if (mode === "auto") return "on";
+  return "off";
+}
+
+async function optimizeCapturedPhoto(photo: {
+  readonly uri: string;
+  readonly width: number;
+  readonly height: number;
+}): Promise<string> {
+  const longestEdge = Math.max(photo.width, photo.height);
+  if (longestEdge <= MAX_CAPTURE_EDGE) return photo.uri;
+  const scale = MAX_CAPTURE_EDGE / longestEdge;
+  const targetSize = {
+    width: Math.max(1, Math.round(photo.width * scale)),
+    height: Math.max(1, Math.round(photo.height * scale)),
+  };
+  try {
+    const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
+    const rendered = await ImageManipulator.manipulate(photo.uri).resize(targetSize).renderAsync();
+    try {
+      const saved = await rendered.saveAsync({
+        format: SaveFormat.JPEG,
+        compress: CAPTURE_JPEG_QUALITY,
+      });
+      try {
+        const { File } = await import("expo-file-system");
+        const original = new File(photo.uri);
+        if (original.exists) original.delete();
+      } catch {
+        // Best-effort cleanup of the full-sensor camera cache file.
+      }
+      return saved.uri;
+    } finally {
+      rendered.release();
+    }
+  } catch {
+    return photo.uri;
+  }
+}
+
+async function takeAndCapturePhoto(
+  cameraView: CameraView,
+  onCapture: (uri: string) => Promise<void>,
+): Promise<void> {
+  try {
+    const photo = await cameraView.takePictureAsync({ quality: 0.85, exif: false });
+    if (photo?.uri) {
+      const optimizedUri = await optimizeCapturedPhoto(photo);
+      await onCapture(optimizedUri);
+    }
+  } catch (error) {
+    console.warn("[composer-camera] capture failed", error);
+  }
+}
 
 /**
  * Live camera shown under the composer, like ChatGPT's attachment tray:
@@ -21,21 +99,25 @@ export function ComposerCameraPanel(props: {
 }) {
   const gt = useGT();
   const camera = useRef<CameraView>(null);
+  const isFocused = useIsFocused();
+  const appActive = useSyncExternalStore(subscribeAppState, getAppActiveSnapshot);
   // Asks on first open, like ChatGPT's tray; later opens reuse the answer.
   const [permission, requestPermission] = useCameraPermissions({ request: true });
   const [facing, setFacing] = useState<CameraType>("back");
+  const [flash, setFlash] = useState<FlashMode>("off");
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
+  const granted = permission?.granted === true;
+  const cameraActive = granted && isFocused && appActive;
+
   const capture = async () => {
-    if (!camera.current || capturing || !ready) return;
+    const cameraView = camera.current;
+    if (!cameraView || capturing || !ready || !cameraActive) return;
     setCapturing(true);
-    try {
-      const photo = await camera.current.takePictureAsync({ quality: 0.85, exif: false });
-      if (photo?.uri) await props.onCapture(photo.uri);
-    } finally {
-      setCapturing(false);
-    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await takeAndCapturePhoto(cameraView, props.onCapture);
+    setCapturing(false);
   };
 
   const pickFrom = (pick: () => Promise<void>) => {
@@ -43,7 +125,10 @@ export function ComposerCameraPanel(props: {
     void pick();
   };
 
-  const granted = permission?.granted === true;
+  const flashIcon =
+    flash === "on" ? "bolt.fill" : flash === "auto" ? "bolt.circle" : "bolt.slash.fill";
+  const flashLabel =
+    flash === "on" ? gt("Flash on") : flash === "auto" ? gt("Flash auto") : gt("Flash off");
 
   return (
     <Animated.View
@@ -58,9 +143,10 @@ export function ComposerCameraPanel(props: {
         {granted ? (
           <CameraView
             ref={camera}
-            active
+            active={cameraActive}
             animateShutter
             facing={facing}
+            flash={facing === "back" ? flash : "off"}
             mode="picture"
             onCameraReady={() => setReady(true)}
             style={StyleSheet.absoluteFill}
@@ -89,6 +175,22 @@ export function ComposerCameraPanel(props: {
           </View>
         )}
 
+        {granted && facing === "back" ? (
+          <Pressable
+            accessibilityLabel={flashLabel}
+            accessibilityRole="button"
+            className="absolute left-3 top-3 size-9 items-center justify-center rounded-full bg-black/45 active:opacity-70"
+            onPress={() => setFlash(nextFlashMode)}
+          >
+            <SymbolView
+              name={flashIcon}
+              size={16}
+              tintColor={flash === "off" ? "#ffffff" : "#ffd60a"}
+              type="monochrome"
+            />
+          </Pressable>
+        ) : null}
+
         <Pressable
           accessibilityLabel={gt("Close camera")}
           accessibilityRole="button"
@@ -103,8 +205,8 @@ export function ComposerCameraPanel(props: {
             <Pressable
               accessibilityLabel={gt("Take photo")}
               accessibilityRole="button"
-              accessibilityState={{ disabled: !ready || capturing }}
-              disabled={!ready || capturing}
+              accessibilityState={{ disabled: !ready || capturing || !cameraActive }}
+              disabled={!ready || capturing || !cameraActive}
               className="size-[66px] items-center justify-center rounded-full border-[4px] border-white active:opacity-70"
               onPress={() => void capture()}
             >

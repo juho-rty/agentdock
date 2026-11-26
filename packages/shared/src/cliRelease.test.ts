@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cliArchiveTarCommand, newestCliReleaseVersion, parseChecksums } from "./cliRelease.ts";
+import {
+  CLI_RELEASES_PAGE_URL,
+  cliArchiveTarCommand,
+  cliReleaseIndexPageUrl,
+  newestCliReleaseVersion,
+  parseChecksums,
+} from "./cliRelease.ts";
 
 describe("cliRelease", () => {
+  it("points release lookups at the AgentDock releases repository", () => {
+    expect(CLI_RELEASES_PAGE_URL).toBe("https://github.com/juho-rty/agentdock-releases/releases");
+    expect(cliReleaseIndexPageUrl(1)).toBe(
+      "https://api.github.com/repos/juho-rty/agentdock-releases/releases?per_page=100&page=1",
+    );
+  });
+
   it("parses sha256sum output including binary-mode markers", () => {
     const checksums = parseChecksums(
       [

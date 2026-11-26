@@ -177,6 +177,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "archivebox.fill": IconArchive,
   "bell.badge": IconBellRinging,
   "bolt.circle": IconBolt,
+  "bolt.fill": IconBolt,
+  "bolt.slash.fill": IconBolt,
   "bolt.horizontal.circle": IconBolt,
   brain: IconBrain,
   "cable.connector": IconPlug,

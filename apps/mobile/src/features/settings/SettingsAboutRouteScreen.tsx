@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { useDeadlinePassed } from "../../lib/clock";
 import {
   type AppUpdateCheckState,
@@ -17,6 +18,7 @@ import {
   registerHiddenUpdateTap,
   runAppUpdateCheck,
 } from "../updates/app-updates";
+import { checkIosOtaUpdate, installIosOtaUpdate, useIosOtaUpdate } from "../updates/iosOtaUpdate";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -24,6 +26,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 export function SettingsAboutRouteScreen() {
   const gt = useGT();
   const insets = useSafeAreaInsets();
+  const ota = useIosOtaUpdate();
 
   return (
     <SettingsScreen title={gt("About")}>
@@ -35,8 +38,95 @@ export function SettingsAboutRouteScreen() {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
         <AppSettingsSection />
+        {ota.supported ? <IosWirelessUpdateSection /> : null}
       </ScrollView>
     </SettingsScreen>
+  );
+}
+
+function IosWirelessUpdateSection() {
+  const gt = useGT();
+  const ota = useIosOtaUpdate();
+  const [confirmedCurrentUntil, setConfirmedCurrentUntil] = useState<number | null>(null);
+  const confirmationExpired = useDeadlinePassed(confirmedCurrentUntil);
+  const showUpToDate =
+    confirmedCurrentUntil !== null && !confirmationExpired && !ota.hasNewerBuild && !ota.checking;
+
+  async function handleManualCheck() {
+    const outcome = await checkIosOtaUpdate();
+    if (!outcome.ok && outcome.error) {
+      Dialog.alert(
+        gt("Update check failed"),
+        gt("Make sure Tailscale is connected ({reason}).", { reason: outcome.error }),
+      );
+      return;
+    }
+    if (!outcome.hasNewerBuild) {
+      setConfirmedCurrentUntil(Date.now() + 3_000);
+    }
+  }
+
+  async function handleInstall() {
+    try {
+      await installIosOtaUpdate();
+    } catch (error) {
+      Dialog.alert(
+        gt("Update failed"),
+        error instanceof Error ? error.message : gt("Could not start wireless installation."),
+      );
+    }
+  }
+
+  const expiry = ota.expiry;
+  const expiryValue = expiry
+    ? expiry.expired
+      ? gt("Expired")
+      : gt("{days}d left", { days: expiry.daysRemaining })
+    : null;
+
+  return (
+    <SettingsSection title={gt("Wireless Update")}>
+      {expiry ? (
+        <View className="flex-row items-center gap-4 border-b border-border p-4">
+          <SymbolView
+            name={expiry.expiringSoon ? "exclamationmark.triangle" : "checkmark.circle"}
+            size={22}
+            tintColorClassName={expiry.expiringSoon ? "accent-primary-text" : "accent-icon"}
+            type="monochrome"
+            weight="regular"
+          />
+          <Text className="flex-1 text-lg text-foreground">
+            <T>Signing</T>
+          </Text>
+          <View className="items-end">
+            <Text className="text-lg text-foreground-muted">{expiryValue}</Text>
+            <Text className="text-xs text-foreground-muted/70">{expiry.formattedDate}</Text>
+          </View>
+        </View>
+      ) : null}
+      <SettingsActionRow
+        icon="arrow.clockwise"
+        label={
+          ota.hasNewerBuild && ota.remoteBuild
+            ? gt("Build {build} available", { build: ota.remoteBuild })
+            : showUpToDate
+              ? gt("Up to date")
+              : gt("Check for wireless update")
+        }
+        disabled={ota.checking}
+        loading={ota.checking}
+        onPress={() => void handleManualCheck()}
+      />
+      <SettingsActionRow
+        icon="arrow.up.circle"
+        label={
+          ota.hasNewerBuild && ota.remoteBuild
+            ? gt("Install wireless update ({build})", { build: ota.remoteBuild })
+            : gt("Reinstall wireless build")
+        }
+        onPress={() => void handleInstall()}
+      />
+    </SettingsSection>
   );
 }
 
@@ -158,5 +248,5 @@ function AppSettingsSection() {
 }
 
 function capitalize(value: string): string {
-  return value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+  return value ? value[0]!.toUpperCase() + value.slice(1) : value;
 }
